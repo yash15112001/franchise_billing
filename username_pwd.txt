@@ -1,0 +1,80 @@
+username : yashmandaviyafranchiseadmin
+password : Mandaviya@702
+
+username : yashmandaviya
+password : Mandaviya@702
+
+username: yashmandaviyaf1employee
+password: Mandaviya@702
+
+username: yashmandaviyaf1employee2
+password: Mandaviya@702
+
+username: yashmandaviyaf1fallbackmanager
+password: Mandaviya@702
+
+username: f1_staff_ops_a
+password: Mandaviya@702
+
+username: f1_staff_ops_b
+password: Mandaviya@702
+
+username: f2_admin_primary
+password: Mandaviya@702
+
+username: f2_staff_front_a
+password: Mandaviya@702
+
+username: f2_staff_front_b
+password: Mandaviya@702
+
+username: f3_admin_primary
+password: Mandaviya@702
+
+username: f3_staff_billing
+password: Mandaviya@702
+
+username: f4_admin_primary
+password: Mandaviya@702
+
+username: f4_staff_ops_1
+password: Mandaviya@702
+    
+username: f4_staff_ops_2
+password: Mandaviya@702
+
+username: f5_admin_primary
+password: Mandaviya@702
+
+username: f5_staff_blr_a
+password: Mandaviya@702
+
+username: f5_staff_blr_b
+password: Mandaviya@7021
+
+username: f6_admin_primary
+password: Mandaviya@702
+
+username: f6_staff_blr_1
+password: Mandaviya@702
+
+username: f6_staff_blr_2
+password: Mandaviya@702
+
+username: f7_admin_primary
+password: Mandaviya@702
+
+username: f7_staff_pune_a
+password: Mandaviya@702
+
+username: f7_staff_pune_b
+password: Mandaviya@702
+
+username: f7_staff_pune_c
+password: Mandaviya@702
+
+
+dev : 
+
+username: franchise_billing
+password: FranchiseBilling@2026

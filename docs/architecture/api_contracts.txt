@@ -1,0 +1,1017 @@
+======================================================================================================================================================================================================================================================================================================
+
+Franchise
+
+    get /franchises
+        - based on role of user (will come from server context or from headers), will be able to see franchise details like
+        - id, name, code, address, city, state, pincode, country, status, gst_number, pan_number, monthly_target, location_url
+        average_rating, last_invoice_datetime, today_revenue, monthly_revenue, total_invoices, total_served_vehicles
+        - extra information is due to client request 
+    get /franchises/{franchise_id}
+        - will get same info as above api
+    get /franchises?search={value}&code={code}&name={name}&city={city}&state={state}&country={country}&status={status}
+        - same as above get contracts
+    get /franchises/by-performance -> reports
+        - only visible to main_admin
+        - ranks the franchise by total monthly received revenue
+        - for current month for every franchise count how many revenue it has already generated and rank the franchises based on that
+        - the rank of the franchise will be like 1, 2, 3, ...
+        - returns all active franchise data like : id, name, code, city, state, today's revenue, monthly_revenue, vehicles_serviced, average_invoice_monthly, monthly_target_achived_percentage
+    post /franchises
+        - only main_admin can create franchise
+        - request_body : {name, address, city, state, pincode, country, location_url, gst_number, pan_number, monthly_target?, description?}
+        - internally create franchise in pending_approval state
+        - internally creates franchise timing details for all days with is_closed = True
+        - franchise code generated internally which will be unique every time
+        - return json : { id, name, code, address, city, state, pincode, country, status, gst_number, pan_number, monthly_target, location_url, description, created_at, updated_at }
+    patch /franchises/{franchise_id}
+        - only main_admin can update franchise
+        - possible things in request_body : {name, address, city, state, pincode, country, gst_number, pan_number, monthly_target, localtion_url, description}
+        - return json : { id, name, code, address, city, state, pincode, country, status, gst_number, pan_number, monthly_target, location_url, description, created_at, updated_at }
+    patch /franchises/{franchise_id}/activate
+        - only main_admin can do this operation
+        - it will activate the franchise status
+        - on franchise with status other than active, non of the operation on that franchise by anyone other than main_admin can be done
+        - users attached with inactive/pending_approval franchise cant do any allowed operation
+        - request body : {}
+        - returns json : { id, status, updated_at }
+    patch /franchises/{franchise_id}/deactivate
+        - only main_admin can do this operation
+        - can deactivate franchise with status : active / pending_approval
+        - the users related to deactivated franchise can no longer access the system
+        - request_body : {}
+        - returns json : {id, status, updated_at }
+
+    delete /franchises/{franchise_id}
+        - based on role, not every user will be able to perform this operation
+        - rare chance of this happening, cant actually delete the franchise, since many more info like user, customer, vehicle, booking, invoice, payment depends on it
+        - should soft delete the franchise
+        - should I add is_deleted in franchise table?    
+        - I think I will not implement the delete on franchise for now
+
+======================================================================================================================================================================================================================================================================================================
+
+Franchise Commission Policy
+
+    get /franchises/{franchise_id}/commission-policies/active
+        - only admin can do this operation
+        - returns active policy for specified franchise
+        - returns: id, franchise_id, percentage, effective_from, full_franchise_details
+    get /franchises/{franchise_id}/commission-policies
+        - only admin can do this operation
+        - returns all policy of specified franchise
+        - returns : id, franchise_id, percentage, effective_from, effective_till, is_active, full_franchise_details
+    post /franchises/{franchise_id}/commission-policies
+        - only admin can do this
+        - if some old policy is active for this franchise then we deactivate it
+        - create new commission policy for this franchise
+        - request body : { commission_percentage }
+        - creates active commission policy and attaches that to franchise
+        - returns json : { id, franchise_id, percentage, effective_from, is_active }
+
+======================================================================================================================================================================================================================================================================================================
+
+Franchise timing
+
+    get /franchises/{franchise_id}/timings
+        - franchise_admin / staff of franchise and main admin can do this operation
+        - returns: id, franchise_id, day_of_week, open_time, close_time, is_closed, franchise_details 
+    patch /franchises/{franchise_id}/timings/{day_of_week}
+        - only franchise admin of franchise and main admin can do this operation
+        - can only modify 1 timing slot at a time
+        - request body : { close_time, open_time, is_closed }
+        - returns json : { id, franchise_id, day_of_week, close_time, open_time, is_closed, updated_at }
+
+======================================================================================================================================================================================================================================================================================================
+
+Franchise Review
+
+    get /franchises/{franchise_id}/reviews
+        - returns all reviews of specified franchise
+        - franchise_admin and franchise_staff can request only self franchise reviews
+        - main_admin can access all reviews
+        - return : reviews details, franchise_details
+    get /franchises/{franchise_id}/reviews/{review_id}
+        - returns specific review of specified franchise
+        - franchise_admin and franchise_staff can request only self franchise reviews
+        - main_admin can access all reviews
+        - return : review details, franchise_details
+    post /franchises/{franchise_id}/reviews
+        - creates review for the franchise
+        - franchise_admin and franchise_staff can add reviews in self franchise, main_admin can do this in any franchises
+        - customer_id must be related to franchise
+        - request body : { customer_id, rating, comment }
+        - returns json : { id, franchise_id, customer_id, rating, comment, created_at, updated_at }
+    patch /franchises/{franchise_id}/reviews/{review_id}
+        - can only update rating & comment
+        - franchise_admin and franchise_staff can modify the review of self franchise, main_admin can do this for any franchises
+        - body : { rating, comment }
+        - returns json : { id, udpated_at }
+        - does not makes sense to implement this
+
+======================================================================================================================================================================================================================================================================================================
+
+Service
+
+    get /services
+        - returns all active services, for each service details like : id, name, vehicle_type, service_category, base_price, discount_percentage, estimated_duration, description, created_at, updated_at
+        - accessed by all users
+    get /services/{service_id}
+        - same as above but for the specific service_id
+    get /services?search={value}&name={name}&vehicle_type={vehicle_type}&service_category={service_category}
+        - same as above but for the specific service with keyword match
+    get /services/all
+        - returns all services active + in active (can only be accessed by main_admin)
+    get /services/by-popularity -> reports
+        - returns all active services by popularity
+        - popularity means how many times that service has been served to customer
+        - for franchise_admin / franchise_staff the popularity is calculated based on franchise specific booking data
+        - for main_admin the popularity is calculated based on all booking data
+        - data is ranked with popularity_rank starting from 1, 2, 3, ...
+        - return ranked data : id, popularity_rank, name, vehicle_type, service_category, base_price, discount_percentage, estimated_duration, description, created_at, updated_at
+    get /services/analytics -> reports
+        - returns info like count of active services, highest earning service, most booked service, average service value
+        - the analytics depends on who requests them, for franchise_staff / owner -> analytics will be based on franchise specific, for main_admin -> all
+        - returns { total_services, average_service_value, highest_earning_service, most_booked_service }
+    post /services
+        - only admin can create service
+        - request_body : { name, vehicle_type, service_category, discount_percentage, estimated_duration, base_price, description}
+        - internally create active service
+        - return json : { id, name, vehicle_type, service_category, base_price, discount_percentage, estimated_duration, description, created_at, updated_at }
+    patch /services/{service_id}
+        - only admin can modify the service
+        - for now, only allow update on base_price, discount_percentage, estimated_duration and description since there is conditional uniqueness on (name, vehicle_category, service_category) with is_active
+        - request_body : { base_price, discount_percentage, estimated_duration, description }
+        - return json : { id, name, vehicle_type, service_category, base_price, discount_percentage, estimated_duration, description, created_at, updated_at }
+        - ** about modifying the service, its better to first deactivate the older service and then create new service with new data
+        - this is crucial because updating the service data can corrupt the older booking details since the booking item depends on service
+        - ** will not be provided in v1
+    patch /services/{service_id}/deactivate
+        - only main_admin can deactivate the service
+        - request_body : {}
+        - deactivates the service
+        - return json : { id, is_active, updated_at }
+    patch /services/{service_id}/activate
+        - only main_admin can activate the service
+        - request_body : {}
+        - activates the service
+        - return json : { id, is_active, updated_at }
+
+======================================================================================================================================================================================================================================================================================================
+
+User
+
+    get /users
+        - returns all active users, based on who is requesting, the response will be filtered, i.e., the franchise_staff can only read self info, franchise_admin can read self and self franchise staff info, main_admin can read every users info
+        - returns info like : id, username, role, franchise_id, full_name, email, extra_permission, revoked_permission
+    get /users/{user_id}
+        - returns info of specific user based on user_id, all rules from above endpoint applies here also
+    get /users?search={value}&full_name={full_name}&username={username}&franchise_id={franchise_id}&email={email}&role={role}
+        - returns info of specific user based on query parameters, all rules from above endpoint applies here also
+    post /users
+        - based on role, not evey user will be able to create every type of user
+        - the scope in which user will be created and type of that users will be limited to few user types
+        - extra permission and revoked permission must be handled with care, not every user will be eligible for those
+        - if main_admin is creating the user then franchise_id must be provided
+        - if franchise_admin is creating the user then franchise_id is optional and any provided franchise_id other than its own franchise is ignored
+        - franchise_admin can create franchise_admin and franchise_staff_member in its own franchise
+        - request body : {username, password, role, franchise_id?, full_name, email?, extra_permissions, revoked_permissions }
+        - the password will stored in one way increapted format in db
+        - return json : { id, username, role, franchise_id, full_name, email?, created_at, updated_at }
+    patch /users/{user_id}/profile
+        - can only update the profile info like full_name, email
+        - can still be updated by users with higher proper clearance
+        - request_body : { full_name, email }
+        - updates the user's profile info
+        - returns json : { user_id, updated_at }
+    patch /users/{user_id}/access
+        - can only update the access related info like franchise_id, role
+        - only possible by main_admin
+        - request_body : { franchise_id, role }
+        - returns json : { user_id, updated_at }
+    patch /users/{user_id}/permissions
+        - can only adjust permission overrides on a user; only main_admin
+        - request_body : { extra_permissions, revoked_permissions }  **both arrays are deltas, not full replacement**
+        - server merges each delta into the user row using role defaults + current extra_permissions + current revoked_permissions
+        - extra_permissions (delta): for each permission code in this array:
+            - if it is currently in revoked_permissions and is part of this user's role default set, remove it from revoked_permissions (restore that default grant)
+            - else if it is not part of the role default set, add it to extra_permissions if not already present
+            - if it is already granted by defaults and not revoked, no change
+        - revoked_permissions (delta): for each permission code in this array:
+            - if it is in extra_permissions, remove it from extra_permissions
+            - else if it is part of the role default set, add it to revoked_permissions (revoke that default grant)
+            - if the same code appears in both delta arrays in one request, the call is rejected
+            - if a revoke delta targets a permission that is neither in role defaults nor in extra_permissions, that entry is ignored and may be logged (invalid / stale UI state)
+        - returns json : { user_id, updated_at }
+        - for the full current state and UI hints, use get /users/{user_id}/permissions
+    get /users/permissions?role={role}
+        - only main_admin can access this endpoint
+        - role can only be franchise_admin or franchise_staff_member
+        - returns the permission information needed while creating or updating user permission overrides
+        - returns json : {
+            role,
+            default_permissions,
+            extra_permissions_available,
+            revokable_permissions
+          }
+    get /users/{user_id}/permissions
+        - only main_admin can access this endpoint
+        - returns the current permission configuration of the existing user
+        - returns json : {
+            user_id,
+            role,
+            default_permissions,
+            extra_permissions,
+            revoked_permissions,
+            effective_permissions,
+            extra_permissions_available,
+            revokable_permissions,
+            removable_extra_permissions
+          }
+    patch /users/{user_id}/deactivate
+        - based on role, not every user will be able to perform this operation
+        - main_admin can deactiave the franchise_admin and franchise_staff, the franchise_admin can only deactive its own franchise's staff
+        - request_body : {}
+        - deactivates the user
+        - returns json : { id, is_activate, updated_at }
+    patch /users/{user_id}/activate
+        - based on role, not every user will be able to perform this operation
+        - main_admin can activate the franchise_admin and franchise_staff, the franchise_admin can only activate its own franchise's staff
+        - request_body : {}
+        - activates the user
+        - returns json : { id, is_activate, updated_at }
+    patch /users/{user_id}/reset-password
+        - based on role, not every user can reset password of other user
+        - main_admin can reset password of any lower-level user
+        - franchise_admin can reset password of its own franchise staff
+        - this endpoint is only for admin-driven password reset of another user
+        - request_body : { new_password }
+        - returns json : { user_id, updated_at }
+
+======================================================================================================================================================================================================================================================================================================
+
+Customer
+   
+    get /customers
+        - returns all customers based on who is requesting, response will be filtered based on who can see what
+            - main_admin can see all customers from all frachise
+            - franchise_admin and franchise_staff_member can only see customers from their own franchise
+        - returns array of items, same flat shape as single-customer get: id, franchise_id, full_name, email, type, mobile_number, whatsapp_number, last_visit_time, total_visits, total_spending, created_at, updated_at
+    get /customers/{customer_id}
+        - same access rules as list; same flat row fields as each list item
+    get /customers?search={value}&franchise_id={franchise_id}&full_name={full_name}&customer_type={customer_type}&mobile_number={mobile_number}&whatsapp_number={whatsapp_number}&email={email}
+        - same rules and response as above
+    get /customers/{customer_id}/history
+        - same rules as above about who can access info of which customers' past service details
+        - returns the info like which services the customer took earlier
+        - return json : { 
+            customer_info : {...}, 
+            last_visit_time,
+            total_visits,
+            total_spending,
+            bookings : [
+                {
+                    ...,
+                    vehicle : {...},
+                    booking_items : [
+                        {
+                            ...,
+                            service : {...}
+                        }
+                    ],
+                    invoice : {
+                        ...,
+                        payments : [
+                            {...}
+                        ]
+                    },
+                }
+            ],
+        }
+    post /customers
+        - based on role, the scope till which customer is created is limited : main_admin can create customers in any franchise
+        - franchise_admin and franchise_staff_member can create customers in their own franchise
+        - request_body : { franchise_id, full_name, mobile_number, whatsapp_number, email?, type }
+        - returns json : { id, franchise_id, full_name, mobile_number, whatsapp_number, email, type, created_at, updated_at }
+    patch /customers/{customer_id}
+        - based on role, the scope till which customers is updated is limited as above
+        - only full_name, mobile_number, email and type of customer can be updated
+        - request_body : { full_name, email, mobile_number, whatsapp_number, type }
+        - returns json : { customer_id, updated_at }
+    delete /customers/{customer_id}
+        - based on role, the scope till which customers is deleted is limited as above
+        - very rare chances of being used
+        - will not be implemented
+
+======================================================================================================================================================================================================================================================================================================
+
+Vehicle
+
+    get /vehicles
+        - returns all customer vehicles information
+        - based on who is requesting this information, not every users will be able to see all the vehicle information
+        - franchise_admin and franchise_staff_member can only see vehicle info of vehicles owned by customers of its own franchise, where as main_admin can see vehicles of any franchise
+        - returns info like : { is, name, customer_id, customer_basic_info, franchise_id, registration_number, car, model, vehicle_type }
+    get /vehicles/{vehicle_id}
+        - same contract as above, returns only specific vehicle info
+    get /vehicles?search={value}&name={name}&customer_id={customer_id}&franchise_id={franchise_id}&registration_number={registration_number}&vehicle_type={vehicle_type}&color={color}&model={model}
+        - same contract as above, returns vehicles info which matches the query params
+    post /vehicles
+        - based on role: franchise_staff and franchise_admin can create vehicles for customers of their franchise, main_admin can create vehicle for any customer
+        - request_body : { name?, customer_id, franchise_id, registration_number, colour, model, vehicle_type }
+        - returns json : { id, name, customer_id, franchise_id, registration_number, colour, model, vehicle_type, created_at, updated_at }
+        - rare usage
+    patch /vehicles/{vehicle_id}
+        - only name, vehicle_type, color, model can be changed
+        - not every one can change it though, main_admin can change info of any vehicles, franchise_staff & franchise_admin can only update vehicle info of customer of franchise
+        - request body : { name, vehicle_type, color, model }
+        - returns json : { id, updated_at }
+
+======================================================================================================================================================================================================================================================================================================
+
+Authentication
+
+    post /auth/bootstrap-main-admin
+        - one-time bootstrap flow
+        - should only work when no users exist in the system
+        - should require bootstrap secret from env or protected setup mechanism
+        - request body :
+            { full_name, username, password, email?, bootstrap_secret }
+        - returns :
+            { id, username, role, created_at }
+
+    post /auth/login
+        - token based login
+        - request body :
+            { username, password }
+        - verifies credentials and returns access token
+        - returns :
+            {
+                access_token,
+                token_type,
+                user : {
+                    id,
+                    username,
+                    role,
+                    franchise_id,
+                    full_name,
+                    email
+                }
+            }
+
+    get /auth/me
+        - returns authenticated user context
+        - token is expected in Authorization header
+        - returns :
+            {
+                id,
+                username,
+                role,
+                franchise_id,
+                full_name,
+                email,
+                extra_permissions,
+                revoked_permissions,
+                is_active
+            }
+
+    patch /auth/change-password
+        - used for self password change only
+        - old password is required
+        - optional : on successful password change, current client session/token can be invalidated later
+        - request body :
+            { old_password, new_password }
+        - returns :
+            { user_id, updated_at }
+
+======================================================================================================================================================================================================================================================================================================
+
+Booking
+
+    get /bookings
+        - returns all bookings information
+        - based on who is requesting, not every user will be able to see all booking informations
+        - franchise_admin & staff can only see bookings in their own franchise, where main_admin can see all bookings
+        - returns info like : 
+        [
+            {
+                id, franchise_id, customer_id, vehicle_id, requested_at, created_by, notes, created_at, updated_at,
+                booking_items : [{
+                    ...,
+                    service : {...}
+                }],
+                vehicle : {...},
+                created_by : {...}, // user who created this booking
+                customer : {...},
+                invoice : {
+                    ...,
+                    payments : [
+                        {...}
+                    ]
+                },
+            }
+        ]
+        - should not return the full details, only summary, for full details, must use bookings/{booking_id}
+    get /bookings/{booking_id}
+        - same contract as above, only returns specific booking info
+        - full details
+    get /bookings?franchise_id={franchise_id}&customer_id={customer_id}&vehicle_id={vehicle_id}&service_status={service_status}&created_by={created_by}&start_time={start_time}&end_time={end_time}
+        - for start_time & end_time <- time range based filter to work, at least one of them must be provided
+        - same contract as above, returns the booking which matches query params
+        - full details
+    post /bookings
+        - very important **
+        - franchise_admin & staff can only create booking for their franchise, main_admin can create booking for any franchise
+        - the request body management is crucial
+        - in request body customer_id can be provided if not, the actual customer info like full_name, mobile, email? must be provided
+        - in request body vehicle_id can be provided if not, the actual vehicle info like name?, customer_id, franchise_id, registration_number, vehcile_category must be provided
+        - the value of gst_included must only be sent if booking is created by main_admin or the frachise_admin has exclusive permission to do so
+        - ** for now, the seed data must be present in the database like : customer, vehicle, service
+        - request body : { franchise_id, customer_id | customer_info, vehicle_id | vehicle_info, requested_at, notes?, requested_services : [{ service_id, qty }, ...], gst_included } — created_by is the authenticated user (not sent in body)
+        - returns json : 
+            {
+                id, franchise_id, customer_id, vehicle_id, requested_at, created_by, notes, created_at, updated_at,
+                booking_items : [{
+                    ...,
+                    service : {...}
+                }],
+                vehicle : {...},
+                created_by : {...}, // user who created this booking
+                customer : {...},
+                invoice : {
+                    ...,
+                    gst_included
+                    payments : [
+                        {...}
+                    ]
+                },
+            }
+    patch /bookings/{booking_id}
+        - only booking status and booking notes can be updated, who can update what booking depends on user role
+        - request body : { service_status, notes }
+        - returns : { id, updated_at }
+    put /bookings/{booking_id}/items
+        - very important **
+        - this endpoint will allow user to modify the requested services on vehicle in booking
+        - in booking, there are already mapped requested services like : [{service1, qty1}, {service2, qty2}, ...]
+        - input for this endpoint is very specific : [{service1, qty1}, {service2, qty2}, ...]
+        - so we can increase/decrease the qty of service taken, decreasing the qty to 0 must remove that service from service mapped to that booking
+        - for services which are coming from request body, if those are not mapped then we map if, for services which are already mapped we modify qty for those
+        - after the service config mapping is done, we modify the invoice details like, total_base_amount, total_payable_amount, and payment_status if total_paid_amount becomes >= new_total_payable_amount
+        - request body : { items : [{service1, qty1}, {service2, qty2}, ...] }
+        - response body : { booking_id, updated_at }
+
+======================================================================================================================================================================================================================================================================================================
+
+BookingItem
+
+    get /booking-items
+        - returns booking item details
+        - based on who is requesting, not every user will be able to see all booking item
+        - franchise_admin and franchise_staff can only see booking items of bookings which are handled by their franchise, where as main_admin can see any booking_items
+        - minimal reponse
+        - return json : { booking_items : [{...}] }
+    get /booking-items/{booking_item_id}
+        - same contract as above
+        - sends full nested details till booking
+        - returns json : {
+            booking_items : [
+                ...,
+                booking : {...}
+            ]
+        }
+    get /booking-items?booking_id={booking_id}&service_id={service_id}
+        - same contract as above
+        - sends full nested details till booking
+        - returns json : {
+            booking_items : [
+                ...,
+                booking : {...}
+            ]
+        }
+    post /booking-items
+        - very rare usage : never use this directly : use : put /bookings/{booking_id}/items
+        - for completness sack, this endpoint can add 1 booking item on booking
+        - request body : { booking_id, service_id, qty }
+        - internally attaches that booking item in booking, and updates the invoice details
+        - returns json : { id, booking_id, updated_at }
+    put /booking-items/{booking_item_id}
+        - very rare chances of being used
+        - only qty
+        - internally deletes when qty becomes 0
+        - request_body : { qty }
+        - never use this directly : use : put /bookings/{booking_id}/items
+        - internally attaches that booking item in booking, and updates the invoice details
+        - returns json : { id, booking_id, updated_at }
+
+======================================================================================================================================================================================================================================================================================================
+
+Invoice
+
+    get /invoices
+        - returns minimal information of all invoices
+        - based on who is requesing this data, not every one can see all invoices
+        - franchise_admin and franchise_staff can only see invoices of self franchise, main_admin can see all invoices
+        - returns json : { id, invoice_number, franchise_id, booking_id, total_payable_amount, total_paid_amount, payment_status }
+    get /invoices/{invoice_id}
+        - same as above contract, but only sends specific invoice
+        - returns full nested details of booking, franchise, customer
+    get /invoices?invoice_number={invoice_number}&franchise_id={franchise_id}&booking_id={booking_id}&gst_included={gst_included}&payment_status={payment_status}
+        - same as above contract
+        - returns minimal details
+    post /invoices/{invoice_id}/payments
+        - very important **
+        - used for taking payment on the invoice
+        - rules like who can use it same as mentioned in above contracts
+        - request body : { amount, mode, verified_by, reference_number? }
+        - will create the payment record and update the invoice status if total_paid_amount exceeds total_payable_amount
+        - look for over payment **
+        - returns : { payment_id, invoice_id, udpated_at }
+    patch /invoices/{invoice_id}/gst
+        - in rare cases when the value of gst_included needs to be changed : not every one can do this though : by main_admin + fracnhise_admin if he has exclusive permission
+        - request body : { gst_included }
+        - returns json : { id, updated_at }
+        - not provided in v1
+    patch /invoices/{invoice_id}/manual-payment-status
+        - in rare cases when due to some techincal fault the payment is not being added then directly updating the payment status : only by main_admin
+        - request body : { payment_status }
+        - returns json : { id, updated_at }
+        - not provided in v1
+
+======================================================================================================================================================================================================================================================================================================
+
+Payment
+
+    get /payments
+        - returns minimal information of all payments
+        - based on who is requesting this info, not every one can see all payments
+        - franchise_admin and franchise_staff can only see payments under their franchise, main_admin can see all payments
+        - return json : { id, invoice_id, amount, mode, verified_by, reference_number }
+    get /payments/{payment_id}
+        - returns full nested information about specific payment
+        - everything else is same as above contract
+    get /payments?invoice_id={invoice_id}&mode={mode}&verified_by={verified_by}
+        - returns minimal info of payments which matches the query params
+        - based on who is requesting this info, not every one can see all payments
+        - franchise_admin and franchise_staff can only see payments under their franchise, main_admin can see all payments
+        - return json : { id, invoice_id, amount, mode, verified_by, reference_number }
+    post /payments
+        - very rare usage, never use it : must be handled via : post /invoices/{invoice_id}/payments
+        - for complete ness sack, this endpoint can add 1 payment record in invoice
+        - based on added payment, the total_paid_amount and payment_status can change in invoice
+        - look for over payment **
+        - request body : { invoice_id, amount, mode, verified_by, reference_number? }
+        - returns json : { id, invoice_id, amount, mode, verified_by, reference_number, created_at, updated_at }
+        - not provided in v1
+    patch /payments/{payment_id}
+        - only reference_number can be updated rest of the things are immutable
+        - franchise_admin and franchise_staff can only update payments under their franchise, main_admin can see update payments
+        - request body : { reference_number }
+        - returns json : { id, updated_at }
+
+======================================================================================================================================================================================================================================================================================================
+
+Reports
+
+    get /reports/overview
+        - returns the main overview data for reports and analytics screen
+        - based on who is requesting this data:
+            franchise_admin and franchise_staff_member can only access own-franchise data
+        - main_admin can access all-franchise aggregate data by default
+        - main_admin can also request franchise specific data using franchise_id
+        - query params :
+            range_type=current_day|current_week|current_month|month|date_range
+                year? (required when range_type = month)
+                month? (required when range_type = month)
+                start_date? (required when range_type = date_range)
+                end_date? (required when range_type = date_range)
+                franchise_id? (only useful for main_admin)
+        - returns json :
+        {
+            scope : {
+                franchise_id?,
+                range_type
+            },
+            summary : {
+                received_revenue,
+                received_revenue_delta_percentage,
+                vehicles_serviced,
+                vehicles_serviced_delta_percentage,
+                total_invoices,
+                total_invoices_delta_percentage,
+                average_invoice_value,
+                average_invoice_value_delta_percentage,
+                pending_receivables,
+                pending_receivables_delta_percentage,
+                average_rating,
+                average_rating_delta_percentage
+            },
+            payment_mode_breakdown : {
+                cash,
+                upi,
+                card,
+                bank_transfer,
+                cheque,
+                other
+            },
+            top_services_by_revenue : [
+                {
+                    service_id,
+                    name,
+                    received_revenue,
+                    rank
+                }
+            ],
+            customer_insights : {
+                total_unique_customers,
+                new_customers,
+                loyal_customers,
+                loyal_customer_percentage,
+                average_visit_frequency
+            },
+            top_performing_staff : [
+                {
+                    user_id,
+                    full_name,
+                    franchise_id,
+                    franchise_name,
+                    total_revenue,
+                    serviced_vehicle_count,
+                    rank
+                }
+            ],
+            service_analytics : {
+                total_services,
+                active_packages,
+                highest_earning_service,
+                most_booked_service,
+                average_service_value
+            }
+        }
+
+    get /reports/revenue/daily-summary
+        - returns daily revenue summary data
+        - useful for cards like : total daily income, pending payments, payment breakdown
+        - based on who is requesting this data:
+            franchise_admin and franchise_staff_member can only access own-franchise data
+            main_admin can access all-franchise aggregate data by default
+            main_admin can also request franchise specific data using franchise_id
+        - query params :
+            date? (if not provided, current day)
+            franchise_id? (only useful for main_admin)
+        - returns json :
+            {
+                scope : {
+                    franchise_id?,
+                    date
+                },
+                summary : {
+                    received_revenue_today,
+                    received_revenue_delta_percentage,
+                    today_invoice_count,
+                    pending_receivables_today,
+                    pending_invoice_count,
+                    average_payment_delay_days
+                },
+                payment_mode_breakdown : {
+                    cash,
+                    upi,
+                    card,
+                    bank_transfer,
+                    cheque,
+                    other
+                }
+            }
+
+    get /reports/revenue/monthly-overview
+        - returns month wise revenue overview
+        - useful for monthly revenue overview chart
+        - based on who is requesting this data:
+            franchise_admin and franchise_staff_member can only access own-franchise data
+            main_admin can access all-franchise aggregate data by default
+            main_admin can also request franchise specific data using franchise_id
+        - query params :
+            year
+            franchise_id? (only useful for main_admin)
+        - returns json :
+            {
+                scope : {
+                    franchise_id?,
+                    year
+                },
+                monthly_overview : [
+                    {
+                        month,
+                        received_revenue,
+                        projected_revenue?,
+                        delta_to_previous_month_percentage,
+                        invoice_count,
+                        vehicles_serviced,
+                        average_invoice_value
+                    }
+                ]
+            }
+
+    get /reports/revenue/weekly-overview
+        - returns week wise revenue overview
+        - useful for weekly revenue trend chart
+        - based on who is requesting this data:
+            franchise_admin and franchise_staff_member can only access own-franchise data
+            main_admin can access all-franchise aggregate data by default
+            main_admin can also request franchise specific data using franchise_id
+        - query params :
+            range_type=current_month|date_range
+            start_date? (required when range_type = date_range)
+            end_date? (required when range_type = date_range)
+            franchise_id? (only useful for main_admin)
+        - returns json :
+            {
+                scope : {
+                    franchise_id?,
+                    range_type
+                },
+                weekly_overview : [
+                    {
+                        week_start,
+                        week_end,
+                        received_revenue,
+                        delta_to_previous_week_percentage,
+                        pending_receivables,
+                        invoice_count,
+                        vehicles_serviced
+                    }
+                ]
+            }
+
+    get /reports/revenue/by-service
+        - returns revenue generated service wise
+        - based on who is requesting this data:
+            franchise_admin and franchise_staff_member can only access own-franchise data
+            main_admin can access all-franchise aggregate data by default
+            main_admin can also request franchise specific data using franchise_id
+        - query params :
+            range_type=current_day|current_week|current_month|month|date_range
+            year? (required when range_type = month)
+            month? (required when range_type = month)
+            start_date? (required when range_type = date_range)
+            end_date? (required when range_type = date_range)
+            franchise_id? (only useful for main_admin)
+            vehicle_type?
+            service_category?
+            limit?
+        - returns json :
+            {
+                items : [
+                    {
+                        service_id,
+                        name,
+                        vehicle_type,
+                        service_category,
+                        times_booked,
+                        received_revenue,
+                        average_revenue_per_booking,
+                        rank
+                    }
+                ]
+            }
+
+    get /reports/revenue/by-franchise
+        - only main_admin can access this report
+        - returns revenue comparison across franchises
+        - query params :
+            range_type=current_day|current_week|current_month|month|date_range
+            year? (required when range_type = month)
+            month? (required when range_type = month)
+            start_date? (required when range_type = date_range)
+            end_date? (required when range_type = date_range)
+            status?
+        - returns json :
+            {
+                items : [
+                    {
+                        rank,
+                        franchise_id,
+                        franchise_name,
+                        city,
+                        state,
+                        received_revenue,
+                        pending_receivables,
+                        invoice_count,
+                        vehicles_serviced,
+                        average_invoice_value
+                    }
+                ]
+            }
+
+    get /reports/franchises/network-summary
+        - only main_admin can access this report
+        - returns overall franchise network summary
+        - query params :
+            range_type=current_month|month|date_range
+            year? (required when range_type = month)
+            month? (required when range_type = month)
+            start_date? (required when range_type = date_range)
+            end_date? (required when range_type = date_range)
+        - returns json :
+            {
+                total_franchises,
+                active_franchises,
+                inactive_franchises,
+                pending_approval_franchises,
+                network_received_revenue,
+                total_cars_serviced
+            }
+
+    get /reports/franchises/by-performance
+        - only main_admin can access this report
+        - ranks franchises by performance for the requested range
+        - query params :
+                range_type=current_day|current_week|current_month|month|date_range
+                year? (required when range_type = month)
+                month? (required when range_type = month)
+                start_date? (required when range_type = date_range)
+                end_date? (required when range_type = date_range)
+            - returns json :
+                {
+                    items : [
+                        {
+                            rank,
+                            franchise_id,
+                            name,
+                            code,
+                            city,
+                            state,
+                            today_revenue,
+                            monthly_revenue,
+                            vehicles_serviced,
+                            average_invoice_monthly,
+                            monthly_target_achieved_percentage
+                        }
+                    ]
+                }
+        
+    get /reports/franchises/{franchise_id}/performance
+        - only main_admin can access this report
+        - returns detailed performance of specified franchise
+        - query params :
+            range_type=current_day|current_week|current_month|month|date_range
+            year? (required when range_type = month)
+            month? (required when range_type = month)
+            start_date? (required when range_type = date_range)
+            end_date? (required when range_type = date_range)
+            granularity=daily|weekly|monthly
+        - returns json :
+            {
+                franchise_id,
+                summary : {
+                    received_revenue,
+                    pending_receivables,
+                    vehicles_serviced,
+                    invoice_count,
+                    average_invoice_value,
+                    monthly_target,
+                    monthly_target_achieved_percentage
+                },
+                timeline : [
+                    {
+                        label,
+                        received_revenue,
+                        pending_receivables,
+                        vehicles_serviced
+                    }
+                ]
+            }
+        
+    get /reports/customers/insights
+        - returns customer insight data
+        - based on who is requesting this data:
+            franchise_admin and franchise_staff_member can only access own-franchise data
+            main_admin can access all-franchise aggregate data by default
+            main_admin can also request franchise specific data using franchise_id
+        - query params :
+            range_type=current_day|current_week|current_month|month|date_range
+            year? (required when range_type = month)
+            month? (required when range_type = month)
+            start_date? (required when range_type = date_range)
+            end_date? (required when range_type = date_range)
+            franchise_id? (only useful for main_admin)
+            type?
+        - returns json :
+            {
+                summary : {
+                    total_unique_customers,
+                    new_customers,
+                    regular_customers,
+                    vip_customers,
+                    loyal_customers,
+                    loyal_customer_percentage,
+                    average_visit_frequency
+                },
+                top_customers : [
+                    {
+                    customer_id,
+                    full_name,
+                    mobile_number,
+                    type,
+                    total_visits,
+                    total_spending,
+                    last_visit_time
+                    }
+                ]
+            }
+        
+    get /reports/users/by-performance
+        - returns top performing staff report
+        - franchise_admin can only see own franchise staff performance
+        - main_admin can see all franchise staff performance
+        - franchise_staff_member can access only caller-scoped report if enabled later, for now not required        - ranking is based on billed invoice amount from bookings created by those users
+        - query params :
+            range_type=current_day|current_week|current_month|month|date_range
+            year? (required when range_type = month)
+            month? (required when range_type = month)
+            start_date? (required when range_type = date_range)
+            end_date? (required when range_type = date_range)
+            franchise_id? (only useful for main_admin)
+            limit?
+        - returns json :
+            {
+                items : [
+                    {
+                        rank,
+                        user_id,
+                        full_name,
+                        franchise_id,
+                        franchise_name,
+                        city,
+                        state,
+                        total_revenue,
+                        serviced_vehicle_count
+                    }
+                ]
+            }
+        
+    get /reports/services/by-popularity
+        - returns all active services ranked by popularity (how many times each service was served to customers)
+        - franchise_admin / franchise_staff: popularity from own-franchise booking data only
+        - main_admin: popularity from all booking data (optional ``franchise_id`` to scope to one franchise)
+        - data is ranked with popularity_rank starting from 1, 2, 3, ...
+        - query params :
+            range_type=current_day|current_week|current_month|month|date_range
+            year? (required when range_type = month)
+            month? (required when range_type = month)
+            start_date? (required when range_type = date_range)
+            end_date? (required when range_type = date_range)
+            franchise_id? (only useful for main_admin)
+        - returns ranked data : id, popularity_rank, name, vehicle_type, service_category, base_price, discount_percentage, estimated_duration, description, created_at, updated_at
+
+    get /reports/services/analytics
+        - returns service analytics summary
+        - based on who is requesting this data:
+        - franchise_admin and franchise_staff_member can only access own-franchise data
+        - main_admin can access all-franchise aggregate data by default
+        - main_admin can also request franchise specific data using franchise_id
+        - query params :
+            range_type=current_day|current_week|current_month|month|date_range
+            year? (required when range_type = month)
+            month? (required when range_type = month)
+            start_date? (required when range_type = date_range)
+            end_date? (required when range_type = date_range)
+            franchise_id? (only useful for main_admin)
+        - returns json :
+            {
+                total_services,
+                active_packages,
+                highest_earning_service,
+                most_booked_service,
+                average_service_value
+            }
+
+    get /reports/export/pdf
+        - exports report data in pdf format
+        - based on who is requesting, data remains scoped exactly like source report
+        - query params :
+            report_type=overview|revenue_summary|monthly_overview|weekly_overview|service_revenue|customer_insights|user_performance|franchise_performance|network_summary
+            range_type=current_day|current_week|current_month|month|date_range
+            year?
+            month?
+            start_date?
+            end_date?
+            franchise_id?
+        returns :
+            { download_url, file_name }
+
+    get /reports/export/excel
+        - exports report data in excel format
+        - based on who is requesting, data remains scoped exactly like source report
+        - query params :
+            report_type=overview|revenue_summary|monthly_overview|weekly_overview|service_revenue|customer_insights|user_performance|franchise_performance|network_summary
+            range_type=current_day|current_week|current_month|month|date_range
+            year?
+            month?
+            start_date?
+            end_date?
+            franchise_id?
+        returns :
+            { download_url, file_name }
+
+======================================================================================================================================================================================================================================================================================================

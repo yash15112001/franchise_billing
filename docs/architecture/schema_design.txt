@@ -1,0 +1,252 @@
+------------------------------------------------------------------------------------------------
+
+Franchise
+
+    - id : number
+    - name : str : case_sensitive
+    - code : str : unique
+    - address : str : case_insensitive
+    - city : str : case_insensitive
+    - state : str : case_insensitive
+    - pincode : str (6 digits)
+    - country : str : case_insensitive
+    - status : Enum_str
+    - gst_number : str : case_insensitive : store in uppercase
+    - pan_number : str : case_insensitive : store in uppercase
+    - monthly_target : float : opt
+    - location_url : str : optional : case_sensitive
+    - description : str : optional : case_sensitive
+    - created_at : timestamp
+    - updated_at : timestamp
+
+------------------------------------------------------------------------------------------------
+
+Franchise.status : Enum_str
+
+    - active
+    - inactive
+    - pending_approval
+
+------------------------------------------------------------------------------------------------
+
+Commission Policy
+
+    - id : number
+    - franchise_id : number : fKey
+    - percentage : float
+    - effective_from : date
+    - effective_till : date : optional
+    - is_active : boolean
+    - created_at : timestamp
+    - updated_at : timestamp
+
+------------------------------------------------------------------------------------------------
+
+Review
+
+    - id : number
+    - franchise_id : number : fKey
+    - customer_id : number : fKey
+    - rating : number
+    - comment : str : optional : case_sensitive
+    - created_at : timestamp
+    - updated_at : timestamp
+
+------------------------------------------------------------------------------------------------
+
+Timing
+
+    - id : number
+    - franchise_id : number : fKey
+    - day_of_week : Enum_str
+    - open_time : time : optional
+    - close_time : time : optional
+    - is_closed : boolean
+    - created_at : timestamp
+    - updated_at : timestamp
+
+    - unique(franchise_id, day_of_week)
+
+------------------------------------------------------------------------------------------------
+
+Timing.day_of_week : Enum_str
+
+    - sunday
+    - monday
+    - tuesday
+    - wednesday
+    - thursday
+    - friday
+    - saturday
+
+------------------------------------------------------------------------------------------------
+
+User
+
+    - id : number
+    - username : str : case_sensitive
+    - password_hash : str
+    - role : Enum_str
+    - franchise_id : int : fKey
+    - is_active : boolean
+    - full_name : str : case_sensitive
+    - email : str : optional : case_sensitive
+    - extra_permissions : list[str]
+    - revoked_permissions : list[str]
+    - created_at : timestamp
+    - updated_at : timestamp
+
+    - unique(franchise_id, username)
+
+------------------------------------------------------------------------------------------------
+
+User.role : Enum_str
+
+    - main_admin
+    - franchise_admin
+    - franchise_staff_member
+
+------------------------------------------------------------------------------------------------
+
+Service
+
+    - id : number
+    - name : str : case_insensitive
+    - vehicle_type : str : ext. : case_insensitive : store in lowercase
+    - service_category : str : case_insensitive
+    - base_price : float
+    - discount_percentage : float
+    - estimated_duration : time
+    - description : text : case_sensitive
+    - is_active : boolean
+    - created_at : timestamp
+    - updated_at : timestamp
+
+    - unique (name, vehicle_type, service_category) when is_active = True
+
+------------------------------------------------------------------------------------------------
+
+Customer
+
+    - id : number
+    - franchise_id : number : fKey
+    - full_name : str : case_sensitive
+    - mobile_number : str
+    - whatsapp_number : str : optional
+    - type : Enum_str : default : new
+    - email : str : optional : case_sensitive
+    - created_at : timestamp
+    - updated_at : timestamp
+
+    - unique(franchise_id, mobile_number)
+
+------------------------------------------------------------------------------------------------
+
+Customer.type : Enum_str
+
+    - new
+    - regular
+    - vip
+
+------------------------------------------------------------------------------------------------
+
+Vehicle
+
+    - id : number
+    - name : str : optional : case_sensitive
+    - customer_id : number : fKey
+    - franchise_id : number : fKey (customer.franchise_id)
+    - registration_number : str : case_insensitive : store in uppercase
+    - color : str : case_insensitive
+    - model : str : case_insensitive
+    - vehicle_type : str : extraction possible. : case_insensitive : store in lowercase
+    - created_at : timestamp
+    - updated_at : timestamp
+
+    - unique (customer_id, registration_number)
+
+------------------------------------------------------------------------------------------------
+
+Booking
+
+    - id : number
+    - franchise_id : number : fKey
+    - customer_id : number : fKey
+    - vehicle_id : number : fKey
+    - requested_at : timestamp
+    - service_status : Enum_str
+    - created_by : number : fKey : User.id
+    - notes : text : optional : case_sensitive
+    - created_at : timestamp
+    - updated_at : timestamp
+
+------------------------------------------------------------------------------------------------
+
+Booking.service_status : Enum_str
+
+    - pending
+    - ongoing
+    - complete
+    - cancelled
+
+------------------------------------------------------------------------------------------------
+
+BookingItem
+
+    - id : number
+    - booking_id : number : fKey
+    - service_id : number : fKey
+    - qty : number
+    - created_at : timestamp
+    - updated_at : timestamp
+
+------------------------------------------------------------------------------------------------
+
+Invoice
+
+    - id : number
+    - invoice_number : str : unique
+    - franchise_id : number : fKey
+    - booking_id : number : fKey
+    - gst_included : boolean
+    - gst_amount : float
+    - total_base_amount : float
+    - total_payable_amount : float
+    - total_paid_amount : float
+    - payment_status : Enum_str
+    - created_at : timestamp
+    - updated_at : timestamp
+
+------------------------------------------------------------------------------------------------
+
+Invoice.payment_status : Enum_str
+
+    - pending
+    - partial
+    - complete
+
+------------------------------------------------------------------------------------------------
+
+Payment
+
+    - id : number
+    - invoice_id : number : fKey
+    - amount : float
+    - mode : Enum_str
+    - verified_by : number : fKey : User.id
+    - reference_number : str : optional : case_sensitive
+    - created_at : timestamp
+    - updated_at : timestamp
+
+------------------------------------------------------------------------------------------------
+
+Payment.mode : Enum_str
+
+    - cash
+    - cheque
+    - card
+    - upi
+    - bank_transfer
+    - other
+
+------------------------------------------------------------------------------------------------
