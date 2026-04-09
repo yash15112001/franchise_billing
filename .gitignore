@@ -1,8 +1,5 @@
 # Project-specific
 .env
-.env.local
-.env.dev
-.env.prod
 username_pwd.txt
 scripts/
 .venv/
