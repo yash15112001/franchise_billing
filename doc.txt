@@ -1,4 +1,25 @@
+issues
+
 - despite the franchise being in pending_approval state, users are being created for it
 - there is sutble issue in permission module where even if franchise_admin does not have some permission, he can still assign those permission to its emplpoyees
     - so to resolve it, when getting the permission config for user, based on who is requesting, we have to make sure that extadable permissions in that reponse does not contain permissions which the requester user does not have
 - through testing on permissions needed
+
+todo
+
+[] reports & settlements
+[] missing apis as per figma file
+[] exitsing todos & issues
+[] proper doc in apis
+[] through testing
+[] code consistency
+[] setup of db & server on cloud
+[] api / db query optimization
+
+oos
+
+[] add : rate limting
+[] add : redis cache for user resolution
+[] scale : db
+[] event-driven architecture setup
+[] ui in react
