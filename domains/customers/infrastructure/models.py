@@ -74,11 +74,11 @@ class Vehicle(Base):
     color: Mapped[str] = mapped_column(String(80),
                                        default="",
                                        server_default="")
-    model: Mapped[str] = mapped_column(String(120),
+    model: Mapped[str] = mapped_column(String(50),
                                        default="",
                                        server_default="")
     vehicle_type: Mapped[str] = mapped_column(
-        String(120),
+        String(50),
         default="",
         server_default="",
         index=True,

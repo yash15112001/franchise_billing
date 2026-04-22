@@ -28,7 +28,7 @@ class ServiceResponse(BaseModel):
 
 class ServiceCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    vehicle_type: str = Field(min_length=1, max_length=60)
+    vehicle_type: str = Field(min_length=1, max_length=50)
     service_category: str = Field(min_length=1, max_length=60)
     discount_percentage: Decimal = Field(ge=0, le=100)
     estimated_duration: time

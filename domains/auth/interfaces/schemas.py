@@ -12,7 +12,7 @@ from domains.users.domain.utils import (
 class BootstrapMainAdminRequest(BaseModel):
     full_name: str = Field(min_length=1, max_length=120)
     username: str = Field(min_length=1, max_length=80)
-    password: str = Field(min_length=12)
+    password: str = Field(min_length=8)
     email: EmailStr | None = None
     bootstrap_secret: str
 
@@ -48,4 +48,4 @@ class LoginRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     old_password: str
-    new_password: str = Field(min_length=12)
+    new_password: str = Field(min_length=8)

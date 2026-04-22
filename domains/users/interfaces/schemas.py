@@ -12,7 +12,7 @@ from domains.users.domain.utils import (
 
 class CreateUserRequest(BaseModel):
     username: str = Field(min_length=1, max_length=80)
-    password: str = Field(min_length=12)
+    password: str = Field(min_length=8)
     role: UserRole
     franchise_id: int | None = None
     full_name: str = Field(min_length=1, max_length=120)
@@ -82,4 +82,4 @@ class UpdateUserPermissionsRequest(BaseModel):
 
 
 class ResetPasswordRequest(BaseModel):
-    new_password: str = Field(min_length=12)
+    new_password: str = Field(min_length=8)

@@ -26,7 +26,7 @@ class Service(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), index=True)
-    vehicle_type: Mapped[str] = mapped_column(String(60), index=True)
+    vehicle_type: Mapped[str] = mapped_column(String(50), index=True)
     service_category: Mapped[str] = mapped_column(String(60), index=True)
     base_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     discount_percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"))

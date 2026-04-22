@@ -73,6 +73,8 @@ password: Mandaviya@702
 username: f7_staff_pune_c
 password: Mandaviya@702
 
+username: franchise_1_extended_staff_member
+password: newpassword
 
 dev : 
 

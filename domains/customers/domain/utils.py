@@ -9,8 +9,8 @@ MAX_EMAIL_LEN = 320
 # practical ceiling for storage validation (see schema_design / Wikipedia).
 MAX_REGISTRATION_LEN = 15
 MAX_COLOUR_LEN = 15
-MAX_MODEL_LEN = 20
-MAX_VEHICLE_TYPE_LEN = 20
+MAX_MODEL_LEN = 50
+MAX_VEHICLE_TYPE_LEN = 50
 MAX_VEHICLE_NAME_LEN = 120
 
 
@@ -86,9 +86,10 @@ def normalize_model(value: str) -> str:
     s = value.strip().lower()
     if not s:
         raise ValueError("model cannot be empty or whitespace only.")
-    if len(s) > MAX_COLOUR_LEN:
+    if len(s) > MAX_MODEL_LEN:
         raise ValueError(
-            f"model must be at most {MAX_COLOUR_LEN} characters.", )
+            f"model must be at most {MAX_MODEL_LEN} characters.",
+        )
     return s
 
 
@@ -96,9 +97,10 @@ def normalize_vehicle_type(value: str) -> str:
     s = value.strip().lower()
     if not s:
         raise ValueError("vehicle type cannot be empty or whitespace only.")
-    if len(s) > MAX_COLOUR_LEN:
+    if len(s) > MAX_VEHICLE_TYPE_LEN:
         raise ValueError(
-            f"vehicle type must be at most {MAX_COLOUR_LEN} characters.", )
+            f"vehicle type must be at most {MAX_VEHICLE_TYPE_LEN} characters.",
+        )
     return s
 
 

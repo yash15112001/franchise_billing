@@ -247,11 +247,7 @@ def create_user_for_actor(
             details={"franchise_id": resolved_franchise_id},
         )
 
-    password_errors = validate_password_strength(
-        password,
-        username=username,
-        email=email,
-    )
+    password_errors = validate_password_strength(password)
     if password_errors:
         raise AppError(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -768,11 +764,7 @@ def reset_password_for_actor(
             error_code="PASSWORD_REUSE_NOT_ALLOWED",
         )
 
-    password_errors = validate_password_strength(
-        new_password,
-        username=user.username,
-        email=user.email,
-    )
+    password_errors = validate_password_strength(new_password)
     if password_errors:
         raise AppError(
             status_code=status.HTTP_400_BAD_REQUEST,

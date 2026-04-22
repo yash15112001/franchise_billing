@@ -7,7 +7,7 @@ strip, store lowercase. Optional ``description`` becomes ``None`` when empty aft
 from __future__ import annotations
 
 MAX_SERVICE_NAME_LEN = 120
-MAX_VEHICLE_TYPE_LEN = 60
+MAX_VEHICLE_TYPE_LEN = 50
 MAX_SERVICE_CATEGORY_LEN = 60
 
 

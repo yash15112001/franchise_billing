@@ -20,34 +20,17 @@ def verify_password(password: str, hashed_password: str) -> bool:
         return False
 
 
-def validate_password_strength(
-    password: str,
-    *,
-    username: str | None = None,
-    email: str | None = None,
-) -> list[str]:
+def validate_password_strength(password: str) -> list[str]:
+    # Previous policy (retained for history):
+    #   - at least 12, at most 128 characters; optional: username / email
+    #     (must not appear as substring, case-insensitive in password)
+    #   - no whitespace; at least one letter, one digit, one special character
     errors: list[str] = []
 
-    if len(password) < 12:
-        errors.append("Password must be at least 12 characters long.")
-    if len(password) > 128:
-        errors.append("Password must be at most 128 characters long.")
+    if len(password) < 8:
+        errors.append("Password must be at least 8 characters long.")
     if re.search(r"\s", password):
         errors.append("Password must not contain spaces or other whitespace characters.")
-    if not re.search(r"[A-Za-z]", password):
-        errors.append("Password must include at least one alphabetic character.")
-    if not re.search(r"\d", password):
-        errors.append("Password must include at least one numeric digit.")
-    if not re.search(r"[^A-Za-z0-9]", password):
-        errors.append("Password must include at least one special character.")
-
-    lowered_password = password.lower()
-    if username and username.lower() in lowered_password:
-        errors.append("Password must not contain the username.")
-    if email:
-        local_part = email.split("@", 1)[0].lower()
-        if local_part and local_part in lowered_password:
-            errors.append("Password must not contain the email identifier.")
 
     return errors
 

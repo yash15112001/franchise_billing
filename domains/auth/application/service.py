@@ -62,6 +62,15 @@ def bootstrap_main_admin(
             details={"username": username},
         )
 
+    password_errors = validate_password_strength(password)
+    if password_errors:
+        raise AppError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            message="Password does not meet the password policy.",
+            error_code="WEAK_PASSWORD",
+            details={"reasons": password_errors},
+        )
+
     user = User(
         username=username,
         password_hash=hash_password(password),
@@ -141,11 +150,7 @@ def change_password(
             error_code="PASSWORD_REUSE_NOT_ALLOWED",
         )
 
-    password_errors = validate_password_strength(
-        new_password,
-        username=user.username,
-        email=user.email,
-    )
+    password_errors = validate_password_strength(new_password)
     if password_errors:
         raise AppError(
             status_code=status.HTTP_400_BAD_REQUEST,
