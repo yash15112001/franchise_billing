@@ -53,7 +53,8 @@ def bootstrap_main_admin(
     full_name = normalize_full_name(full_name)
     email = normalize_optional_email(email)
 
-    existing_user = db.scalar(select(User).where(User.username == username))
+    existing_user = db.scalar(
+        select(User).where(User.username == username, User.is_deleted.is_(False)))
     if existing_user is not None:
         raise AppError(
             status_code=status.HTTP_409_CONFLICT,
@@ -113,8 +114,16 @@ def authenticate_user(db: Session, *, username: str,
 
     user = db.scalar(
         select(User).where(User.username == username,
-                           User.is_active.is_(True)))
-    if user is None or not verify_password(password, user.password_hash):
+                           User.is_active.is_(True),
+                           User.is_deleted.is_(False)))
+    if user is None:
+        raise AppError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message="User not found.",
+            error_code="USER_NOT_FOUND",
+        )
+
+    if not verify_password(password, user.password_hash):
         raise AppError(
             status_code=401,
             message="Invalid credentials.",

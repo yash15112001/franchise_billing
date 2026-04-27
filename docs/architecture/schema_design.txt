@@ -14,6 +14,7 @@ Franchise
     - gst_number : str : case_insensitive : store in uppercase
     - pan_number : str : case_insensitive : store in uppercase
     - monthly_target : float : opt
+    - is_deleted : boolean
     - location_url : str : optional : case_sensitive
     - description : str : optional : case_sensitive
     - created_at : timestamp
@@ -37,6 +38,7 @@ Commission Policy
     - effective_from : date
     - effective_till : date : optional
     - is_active : boolean
+    - is_deleted : boolean
     - created_at : timestamp
     - updated_at : timestamp
 
@@ -47,6 +49,7 @@ Review
     - id : number
     - franchise_id : number : fKey
     - customer_id : number : fKey
+    - is_deleted : boolean
     - rating : number
     - comment : str : optional : case_sensitive
     - created_at : timestamp
@@ -62,6 +65,7 @@ Timing
     - open_time : time : optional
     - close_time : time : optional
     - is_closed : boolean
+    - is_deleted : boolean
     - created_at : timestamp
     - updated_at : timestamp
 
@@ -135,6 +139,7 @@ Customer
     - whatsapp_number : str : optional
     - type : Enum_str : default : new
     - email : str : optional : case_sensitive
+    - is_deleted : boolean
     - created_at : timestamp
     - updated_at : timestamp
 
@@ -160,6 +165,7 @@ Vehicle
     - color : str : case_insensitive
     - model : str : case_insensitive
     - vehicle_type : str : extraction possible. : case_insensitive : store in lowercase
+    - is_deleted : boolean
     - created_at : timestamp
     - updated_at : timestamp
 

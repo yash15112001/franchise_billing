@@ -17,6 +17,7 @@ FRANCHISE_STAFF_ROLE = UserRole.FRANCHISE_STAFF_MEMBER.value
 VIEW_FRANCHISES = "franchise:view"
 CREATE_FRANCHISES = "franchise:create"
 UPDATE_FRANCHISES = "franchise:update"
+DELETE_FRANCHISES = "franchise:delete"
 ACTIVATE_FRANCHISES = "franchise:activate"
 DEACTIVATE_FRANCHISES = "franchise:deactivate"
 VIEW_FRANCHISE_PERFORMANCE = "franchise:performance_view"
@@ -52,29 +53,34 @@ UPDATE_USER_PERMISSIONS = "user:update_permissions"
 ACTIVATE_USERS = "user:activate"
 DEACTIVATE_USERS = "user:deactivate"
 RESET_USER_PASSWORD = "user:reset_password"
+DELETE_USERS = "user:delete"
 VIEW_USER_PERFORMANCE = "user:performance_view"
 
 # Customer
 VIEW_CUSTOMERS = "customer:view"
 CREATE_CUSTOMERS = "customer:create"
 UPDATE_CUSTOMERS = "customer:update"
+DELETE_CUSTOMERS = "customer:delete"
 VIEW_CUSTOMER_HISTORY = "customer:history_view"
 
 # Vehicle
 VIEW_VEHICLES = "vehicle:view"
 CREATE_VEHICLES = "vehicle:create"
 UPDATE_VEHICLES = "vehicle:update"
+DELETE_VEHICLES = "vehicle:delete"
 
 # Booking
 CREATE_BOOKING = "booking:create"
 VIEW_BOOKINGS = "booking:view"
 UPDATE_BOOKINGS = "booking:update"
+DELETE_BOOKINGS = "booking:delete"
 MANAGE_BOOKING_ITEMS = "booking:manage_items"
 VIEW_BOOKING_ITEMS = "booking_item:view"
 
 # Invoice
 CREATE_INVOICE = "invoice:create"
 VIEW_INVOICES = "invoice:view"
+DELETE_INVOICES = "invoice:delete"
 CREATE_NON_GST_INVOICE = "invoice:create_without_gst"
 CREATE_INVOICE_PAYMENTS = "invoice:payment_create"
 UPDATE_INVOICE_GST = "invoice:gst_update"
@@ -114,6 +120,7 @@ ALL_PERMISSION_CODES = {
     VIEW_FRANCHISES,
     CREATE_FRANCHISES,
     UPDATE_FRANCHISES,
+    DELETE_FRANCHISES,
     ACTIVATE_FRANCHISES,
     DEACTIVATE_FRANCHISES,
     VIEW_FRANCHISE_PERFORMANCE,
@@ -144,20 +151,25 @@ ALL_PERMISSION_CODES = {
     ACTIVATE_USERS,
     DEACTIVATE_USERS,
     RESET_USER_PASSWORD,
+    DELETE_USERS,
     VIEW_USER_PERFORMANCE,
     # Customer
     CREATE_CUSTOMERS,
     UPDATE_CUSTOMERS,
+    DELETE_CUSTOMERS,
     VIEW_CUSTOMER_HISTORY,
     # Vehicle
     VIEW_VEHICLES,
     CREATE_VEHICLES,
     UPDATE_VEHICLES,
+    DELETE_VEHICLES,
     # Booking
     UPDATE_BOOKINGS,
+    DELETE_BOOKINGS,
     MANAGE_BOOKING_ITEMS,
     VIEW_BOOKING_ITEMS,
     # Invoice
+    DELETE_INVOICES,
     CREATE_INVOICE_PAYMENTS,
     UPDATE_INVOICE_GST,
     MANUAL_UPDATE_INVOICE_PAYMENT_STATUS,

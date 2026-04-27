@@ -14,7 +14,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from domains.audit.application.service import write_audit_log
-from domains.bookings.application.service import _query_bookings
+from domains.bookings.application.service import (
+    _query_bookings,
+    _soft_delete_booking_tree,
+)
 from domains.bookings.infrastructure.models import Booking
 from domains.franchises.application.service import get_franchise_for_actor
 from domains.invoicing.domain.enums import InvoicePaymentStatus
@@ -76,7 +79,7 @@ def _query_invoices(
                 actor_franchise_id,
             )
 
-    statement = select(Invoice)
+    statement = select(Invoice).where(Invoice.is_deleted.is_(False))
     if order_desc_by_created:
         statement = statement.order_by(Invoice.created_at.desc())
 
@@ -200,7 +203,9 @@ def get_invoice_detail_bundle_for_actor(
     payment_rows = list(
         db.scalars(
             select(Payment).where(
-                Payment.invoice_id == invoice.id).order_by(
+                Payment.invoice_id == invoice.id,
+                Payment.is_deleted.is_(False),
+            ).order_by(
                     Payment.created_at.asc())).all())
 
     return invoice, bookings[0], payment_rows
@@ -315,3 +320,58 @@ def create_invoice_payment_for_actor(
     )
 
     return payment, invoice
+
+
+def soft_delete_invoice_for_actor(
+    db: Session,
+    *,
+    actor: User,
+    actor_role: UserRole,
+    actor_franchise_id: int | None,
+    invoice_id: int,
+) -> tuple[Invoice, Booking]:
+    """Soft-delete an invoice by deleting its booking tree as an exception rule."""
+
+    invoice = get_invoice_for_actor(
+        db,
+        actor=actor,
+        actor_role=actor_role,
+        actor_franchise_id=actor_franchise_id,
+        invoice_id=invoice_id,
+    )
+
+    franchise_filter = (invoice.franchise_id
+                        if actor_role is UserRole.MAIN_ADMIN else None)
+    bookings = _query_bookings(
+        db,
+        actor=actor,
+        actor_role=actor_role,
+        actor_franchise_id=actor_franchise_id,
+        franchise_id=franchise_filter,
+        booking_id=invoice.booking_id,
+        order_desc_by_created=False,
+    )
+    if not bookings:
+        raise AppError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message="Booking for this invoice was not found.",
+            error_code="BOOKING_NOT_FOUND",
+            details={"booking_id": invoice.booking_id},
+        )
+
+    booking = bookings[0]
+    _soft_delete_booking_tree(db, booking=booking)
+
+    write_audit_log(
+        db,
+        action="invoice.delete",
+        entity_name="invoices",
+        entity_id=str(invoice.id),
+        actor_user_id=actor.id,
+        franchise_id=invoice.franchise_id,
+        payload={
+            "is_deleted": True,
+            "booking_id": booking.id,
+        },
+    )
+    return invoice, booking

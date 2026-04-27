@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum as SqlEnum, ForeignKey, Numeric, String, func
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from domains.payments.domain.enums import PaymentMode
@@ -16,6 +16,7 @@ class Payment(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     mode: Mapped[PaymentMode] = mapped_column(
         SqlEnum(
             PaymentMode,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, JSON, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Index, JSON, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from domains.users.domain.access import UserRole
@@ -12,7 +12,13 @@ from foundation.database.base import Base
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        UniqueConstraint("franchise_id", "username", name="uq_user_franchise_username"),
+        Index(
+            "uq_user_franchise_username_not_deleted",
+            "franchise_id",
+            "username",
+            unique=True,
+            postgresql_where=text("is_deleted IS FALSE"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -33,6 +39,7 @@ class User(Base):
         index=True,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     full_name: Mapped[str] = mapped_column(String(120))
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     extra_permissions: Mapped[list[str]] = mapped_column(JSON, default=list)

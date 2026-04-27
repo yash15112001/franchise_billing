@@ -25,6 +25,7 @@ from domains.franchises.infrastructure.models import (
     FranchiseTiming,
     new_franchise_code_placeholder,
 )
+from domains.users.application.service import soft_delete_user_for_actor
 from domains.users.domain.access import UserRole
 from domains.users.infrastructure.models import User
 from foundation.errors import AppError
@@ -42,7 +43,9 @@ def _franchise_extended_metrics(db: Session, franchise_id: int) -> dict:
     """Aggregates for list/detail franchise payloads (``api_contracts`` extended fields)."""
     avg_rating = db.scalar(
         select(func.avg(FranchiseReview.rating)).where(
-            FranchiseReview.franchise_id == franchise_id, ), )
+            FranchiseReview.franchise_id == franchise_id,
+            FranchiseReview.is_deleted.is_(False),
+        ), )
     average_rating: str | None
     if avg_rating is None:
         average_rating = None
@@ -54,18 +57,24 @@ def _franchise_extended_metrics(db: Session, franchise_id: int) -> dict:
 
     last_dt = db.scalar(
         select(func.max(Invoice.created_at)).where(
-            Invoice.franchise_id == franchise_id, ), )
+            Invoice.franchise_id == franchise_id,
+            Invoice.is_deleted.is_(False),
+        ), )
     last_invoice_datetime = last_dt.isoformat(
     ) if last_dt is not None else None
 
     tic = db.scalar(
         select(func.count()).select_from(Invoice).where(
-            Invoice.franchise_id == franchise_id, ), )
+            Invoice.franchise_id == franchise_id,
+            Invoice.is_deleted.is_(False),
+        ), )
     total_invoices = int(tic or 0)
 
     svc = db.scalar(
         select(func.count(func.distinct(Booking.vehicle_id))).where(
-            Booking.franchise_id == franchise_id, ), )
+            Booking.franchise_id == franchise_id,
+            Booking.is_deleted.is_(False),
+        ), )
     total_served_vehicles = int(svc or 0)
 
     now = datetime.now(timezone.utc)
@@ -78,6 +87,8 @@ def _franchise_extended_metrics(db: Session, franchise_id: int) -> dict:
                                  Invoice,
                                  Payment.invoice_id == Invoice.id).where(
                                      Invoice.franchise_id == franchise_id,
+                                     Invoice.is_deleted.is_(False),
+                                     Payment.is_deleted.is_(False),
                                      Payment.created_at >= start_today,
                                      Payment.created_at < end_today,
                                  ), )
@@ -96,6 +107,8 @@ def _franchise_extended_metrics(db: Session, franchise_id: int) -> dict:
                                  Invoice,
                                  Payment.invoice_id == Invoice.id).where(
                                      Invoice.franchise_id == franchise_id,
+                                     Invoice.is_deleted.is_(False),
+                                     Payment.is_deleted.is_(False),
                                      Payment.created_at >= start_month,
                                      Payment.created_at < end_month,
                                  ), )
@@ -222,7 +235,8 @@ def list_franchises_for_actor(
     country: str | None,
     status: FranchiseStatus | None,
 ) -> list[Franchise]:
-    statement = select(Franchise).order_by(Franchise.name.asc())
+    statement = select(Franchise).where(
+        Franchise.is_deleted.is_(False)).order_by(Franchise.name.asc())
     if status is not None:
         statement = statement.where(Franchise.status == status)
     if code:
@@ -287,7 +301,10 @@ def get_franchise_for_actor(
             )
 
     franchise = db.scalar(
-        select(Franchise).where(Franchise.id == franchise_id))
+        select(Franchise).where(
+            Franchise.id == franchise_id,
+            Franchise.is_deleted.is_(False),
+        ))
     if franchise is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -371,7 +388,9 @@ def list_commission_policies_for_actor(
         franchise_id=franchise_id,
     )
     statement = select(CommissionPolicy).where(
-        CommissionPolicy.franchise_id == franchise_id, )
+        CommissionPolicy.franchise_id == franchise_id,
+        CommissionPolicy.is_deleted.is_(False),
+    )
     if active_only:
         statement = statement.where(CommissionPolicy.is_active.is_(True))
     statement = statement.order_by(
@@ -432,7 +451,9 @@ def list_franchise_timings_for_actor(
     rows = list(
         db.scalars(
             select(FranchiseTiming).where(
-                FranchiseTiming.franchise_id == franchise_id, ), ).all(), )
+                FranchiseTiming.franchise_id == franchise_id,
+                FranchiseTiming.is_deleted.is_(False),
+            ), ).all(), )
     return franchise, _sorted_franchise_timings(rows)
 
 
@@ -477,6 +498,7 @@ def patch_franchise_timing_for_actor(
         select(FranchiseTiming).where(
             FranchiseTiming.franchise_id == franchise_id,
             FranchiseTiming.day_of_week == day_of_week,
+            FranchiseTiming.is_deleted.is_(False),
         ), )
     if timing is None:
         raise AppError(
@@ -535,6 +557,7 @@ def create_commission_policy_for_actor(
             select(CommissionPolicy).where(
                 CommissionPolicy.franchise_id == franchise_id,
                 CommissionPolicy.is_active.is_(True),
+                CommissionPolicy.is_deleted.is_(False),
             ), ).all(), )
 
     end_previous_active_commission_policy = effective_from - timedelta(days=1)
@@ -749,7 +772,9 @@ def list_franchise_reviews_for_actor(
     reviews = list(
         db.scalars(
             select(FranchiseReview).where(
-                FranchiseReview.franchise_id == franchise_id, ).order_by(
+                FranchiseReview.franchise_id == franchise_id,
+                FranchiseReview.is_deleted.is_(False),
+            ).order_by(
                     FranchiseReview.created_at.desc()), ).all(), )
     return franchise, reviews
 
@@ -772,6 +797,7 @@ def get_franchise_review_for_actor(
         select(FranchiseReview).where(
             FranchiseReview.id == review_id,
             FranchiseReview.franchise_id == franchise_id,
+            FranchiseReview.is_deleted.is_(False),
         ), )
     if review is None:
         raise AppError(
@@ -805,7 +831,11 @@ def create_franchise_review_for_actor(
         actor_franchise_id=actor_franchise_id,
         franchise_id=franchise_id,
     )
-    customer = db.get(Customer, customer_id)
+    customer = db.scalar(
+        select(Customer).where(
+            Customer.id == customer_id,
+            Customer.is_deleted.is_(False),
+        ))
     if customer is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -880,6 +910,7 @@ def patch_franchise_review_for_actor(
         select(FranchiseReview).where(
             FranchiseReview.id == review_id,
             FranchiseReview.franchise_id == franchise_id,
+            FranchiseReview.is_deleted.is_(False),
         ), )
     if review is None:
         raise AppError(
@@ -925,3 +956,93 @@ def delete_franchise_not_supported() -> None:
         message="Deleting a franchise is not supported.",
         error_code="FRANCHISE_DELETE_NOT_SUPPORTED",
     )
+
+
+def soft_delete_franchise_for_actor(
+    db: Session,
+    *,
+    actor: User,
+    actor_role: UserRole,
+    actor_franchise_id: int | None,
+    franchise_id: int,
+) -> Franchise:
+    franchise = get_franchise_for_actor(
+        db,
+        actor_role=actor_role,
+        actor_franchise_id=actor_franchise_id,
+        franchise_id=franchise_id,
+    )
+
+    users = list(
+        db.scalars(
+            select(User).where(
+                User.franchise_id == franchise.id,
+                User.is_deleted.is_(False),
+            )).all())
+    for user in users:
+        soft_delete_user_for_actor(
+            db,
+            actor=actor,
+            actor_role=actor_role,
+            user_id=user.id,
+        )
+
+    from domains.customers.application.service import soft_delete_customer_for_actor
+
+    customers = list(
+        db.scalars(
+            select(Customer).where(
+                Customer.franchise_id == franchise.id,
+                Customer.is_deleted.is_(False),
+            )).all())
+    for customer in customers:
+        soft_delete_customer_for_actor(
+            db,
+            actor=actor,
+            actor_role=actor_role,
+            actor_franchise_id=actor_franchise_id,
+            customer_id=customer.id,
+        )
+
+    reviews = list(
+        db.scalars(
+            select(FranchiseReview).where(
+                FranchiseReview.franchise_id == franchise.id,
+                FranchiseReview.is_deleted.is_(False),
+            )).all())
+    for review in reviews:
+        review.is_deleted = True
+
+    timings = list(
+        db.scalars(
+            select(FranchiseTiming).where(
+                FranchiseTiming.franchise_id == franchise.id,
+                FranchiseTiming.is_deleted.is_(False),
+            )).all())
+    for timing in timings:
+        timing.is_deleted = True
+
+    commission_policies = list(
+        db.scalars(
+            select(CommissionPolicy).where(
+                CommissionPolicy.franchise_id == franchise.id,
+                CommissionPolicy.is_deleted.is_(False),
+            )).all())
+    for policy in commission_policies:
+        policy.is_deleted = True
+        policy.is_active = False
+
+    if franchise.is_deleted is False:
+        franchise.is_deleted = True
+        db.flush()
+
+    write_audit_log(
+        db,
+        action="franchise.delete",
+        entity_name="franchises",
+        entity_id=str(franchise.id),
+        actor_user_id=actor.id,
+        franchise_id=franchise.id,
+        payload={"is_deleted": True},
+    )
+    return franchise

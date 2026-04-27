@@ -12,6 +12,8 @@ from domains.customers.application.service import (
     get_vehicle_for_actor,
     list_customers_for_actor,
     list_vehicles_for_actor,
+    soft_delete_customer_for_actor,
+    soft_delete_vehicle_for_actor,
     update_customer_for_actor,
     update_vehicle_for_actor,
 )
@@ -34,6 +36,8 @@ from domains.customers.interfaces.schemas import (
 from domains.users.domain.access import (
     CREATE_CUSTOMERS,
     CREATE_VEHICLES,
+    DELETE_CUSTOMERS,
+    DELETE_VEHICLES,
     UPDATE_CUSTOMERS,
     UPDATE_VEHICLES,
     VIEW_CUSTOMER_HISTORY,
@@ -226,19 +230,38 @@ def patch_customer(
         )
 
 
-@customers_router.delete("/{customer_id}", include_in_schema=False)
+@customers_router.delete("/{customer_id}")
 def delete_customer(
         customer_id: int,
-        _context: UserContext = Depends(require_permissions(UPDATE_CUSTOMERS)),
-        _db: Session = Depends(get_db),
+        context: UserContext = Depends(require_permissions(DELETE_CUSTOMERS)),
+        db: Session = Depends(get_db),
 ) -> dict:
-    """Not supported — returns AppError **501** `CUSTOMER_DELETE_NOT_IMPLEMENTED`. Hidden from OpenAPI."""
-    raise AppError(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        message="Deleting customers is not supported.",
-        error_code="CUSTOMER_DELETE_NOT_IMPLEMENTED",
-        details={"customer_id": customer_id},
-    )
+    """Soft-delete a customer, its vehicles, related booking tree, and reviews."""
+    try:
+        customer = soft_delete_customer_for_actor(
+            db,
+            actor=context.user,
+            actor_role=context.role,
+            actor_franchise_id=context.franchise_id,
+            customer_id=customer_id,
+        )
+        db.commit()
+    except AppError as exc:
+        db.rollback()
+        return error_response(exc)
+    except Exception:
+        db.rollback()
+        return internal_error_response()
+    else:
+        return success_response(
+            message="Customer deleted successfully.",
+            data={
+                "id": customer.id,
+                "is_deleted": customer.is_deleted,
+                "updated_at": str(customer.updated_at),
+            },
+            status_code=status.HTTP_200_OK,
+        )
 
 
 # --- Vehicles ---
@@ -385,5 +408,39 @@ def patch_vehicle(
         return success_response(
             message="Vehicle updated successfully.",
             data=serialize_vehicle_patch_response(vehicle),
+            status_code=status.HTTP_200_OK,
+        )
+
+
+@vehicles_router.delete("/{vehicle_id}")
+def delete_vehicle(
+        vehicle_id: int,
+        context: UserContext = Depends(require_permissions(DELETE_VEHICLES)),
+        db: Session = Depends(get_db),
+) -> dict:
+    """Soft-delete a vehicle and its booking / invoice / payment tree."""
+    try:
+        vehicle = soft_delete_vehicle_for_actor(
+            db,
+            actor=context.user,
+            actor_role=context.role,
+            actor_franchise_id=context.franchise_id,
+            vehicle_id=vehicle_id,
+        )
+        db.commit()
+    except AppError as exc:
+        db.rollback()
+        return error_response(exc)
+    except Exception:
+        db.rollback()
+        return internal_error_response()
+    else:
+        return success_response(
+            message="Vehicle deleted successfully.",
+            data={
+                "id": vehicle.id,
+                "is_deleted": vehicle.is_deleted,
+                "updated_at": str(vehicle.updated_at),
+            },
             status_code=status.HTTP_200_OK,
         )

@@ -7,7 +7,6 @@ from domains.franchises.application.service import (
     create_commission_policy_for_actor,
     create_franchise_for_actor,
     create_franchise_review_for_actor,
-    delete_franchise_not_supported,
     get_franchise_for_actor,
     get_franchise_review_for_actor,
     list_commission_policies_for_actor,
@@ -19,6 +18,7 @@ from domains.franchises.application.service import (
     serialize_active_commission_policy_response,
     serialize_commission_policy_list_item,
     serialize_commission_policy_row,
+    soft_delete_franchise_for_actor,
     serialize_franchise_timing_list_item,
     serialize_franchise_review_detail_response,
     serialize_franchise_review_patch_response,
@@ -40,7 +40,7 @@ from domains.franchises.interfaces.schemas import (
 from domains.users.domain.access import (
     ACTIVATE_FRANCHISES, CREATE_FRANCHISES,
     CREATE_FRANCHISE_COMMISSION_POLICIES, CREATE_FRANCHISE_REVIEWS,
-    DEACTIVATE_FRANCHISES, UPDATE_FRANCHISES, UPDATE_FRANCHISE_REVIEWS,
+    DEACTIVATE_FRANCHISES, DELETE_FRANCHISES, UPDATE_FRANCHISES, UPDATE_FRANCHISE_REVIEWS,
     UPDATE_FRANCHISE_TIMINGS, VIEW_FRANCHISES,
     VIEW_FRANCHISE_COMMISSION_POLICIES, VIEW_FRANCHISE_REVIEWS,
     VIEW_FRANCHISE_TIMINGS, UserRole)
@@ -279,19 +279,38 @@ def deactivate_franchise(
         )
 
 
-@router.delete("/{franchise_id}", include_in_schema=False)
+@router.delete("/{franchise_id}")
 def delete_franchise(
-        _: int,
-        __: UserContext = Depends(require_permissions(UPDATE_FRANCHISES)),
-        ___: Session = Depends(get_db),
+        franchise_id: int,
+        context: UserContext = Depends(require_permissions(DELETE_FRANCHISES)),
+        db: Session = Depends(get_db),
 ) -> dict:
-    """Not supported — returns AppError (e.g. **501**). Hidden from OpenAPI."""
+    """Soft-delete a franchise and all dependent resources."""
     try:
-        delete_franchise_not_supported()
+        franchise = soft_delete_franchise_for_actor(
+            db,
+            actor=context.user,
+            actor_role=context.role,
+            actor_franchise_id=context.franchise_id,
+            franchise_id=franchise_id,
+        )
+        db.commit()
     except AppError as exc:
+        db.rollback()
         return error_response(exc)
     except Exception:
+        db.rollback()
         return internal_error_response()
+    else:
+        return success_response(
+            message="Franchise deleted successfully.",
+            data={
+                "id": franchise.id,
+                "is_deleted": franchise.is_deleted,
+                "updated_at": str(franchise.updated_at),
+            },
+            status_code=http_status.HTTP_200_OK,
+        )
 
 
 # --- Commission policies ---

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum as SqlEnum, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from foundation.database.base import Base
@@ -43,6 +43,7 @@ class Customer(Base):
     email: Mapped[str | None] = mapped_column(String(320),
                                               nullable=True,
                                               index=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
                                                  server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -83,6 +84,7 @@ class Vehicle(Base):
         server_default="",
         index=True,
     )
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
                                                  server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

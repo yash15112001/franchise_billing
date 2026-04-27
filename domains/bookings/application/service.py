@@ -23,6 +23,7 @@ from domains.customers.infrastructure.models import Customer, Vehicle
 from domains.franchises.application.service import get_franchise_for_actor
 from domains.invoicing.domain.enums import InvoicePaymentStatus
 from domains.invoicing.infrastructure.models import Invoice
+from domains.payments.infrastructure.models import Payment
 from domains.users.domain.access import CREATE_NON_GST_INVOICE, UserRole
 from domains.users.infrastructure.models import User
 from foundation.errors import AppError
@@ -100,7 +101,9 @@ def _apply_invoice_totals_from_booking_items(
     booking_items = list(
         db.scalars(
             select(BookingItem).where(
-                BookingItem.booking_id == booking.id)).all())
+                BookingItem.booking_id == booking.id,
+                BookingItem.is_deleted.is_(False),
+            )).all())
 
     pairs_after = [(booking_item.service_id, booking_item.qty)
                    for booking_item in booking_items]
@@ -204,7 +207,11 @@ def create_booking_for_actor(
         franchise_id=resolved_franchise_id,
     )
 
-    customer = db.get(Customer, customer_id)
+    customer = db.scalar(
+        select(Customer).where(
+            Customer.id == customer_id,
+            Customer.is_deleted.is_(False),
+        ))
     if customer is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -223,7 +230,11 @@ def create_booking_for_actor(
             },
         )
 
-    vehicle = db.get(Vehicle, vehicle_id)
+    vehicle = db.scalar(
+        select(Vehicle).where(
+            Vehicle.id == vehicle_id,
+            Vehicle.is_deleted.is_(False),
+        ))
     if vehicle is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -391,7 +402,8 @@ def _query_bookings(
                 actor_franchise_id,
             )
 
-    statement = select(Booking).options(selectinload(Booking.items))
+    statement = select(Booking).options(selectinload(Booking.items)).where(
+        Booking.is_deleted.is_(False))
     if order_desc_by_created:
         statement = statement.order_by(Booking.created_at.desc())
 
@@ -444,6 +456,10 @@ def _query_booking_items(
 
     statement = (select(BookingItem).join(
         Booking, BookingItem.booking_id == Booking.id))
+    statement = statement.where(
+        Booking.is_deleted.is_(False),
+        BookingItem.is_deleted.is_(False),
+    )
     if actor_role is not UserRole.MAIN_ADMIN:
         statement = statement.where(Booking.franchise_id == actor_franchise_id)
 
@@ -519,8 +535,11 @@ def _collate_booking_rows(
 
     booking_ids = [b.id for b in bookings]
     invoices_list = list(
-        db.scalars(select(Invoice).where(
-            Invoice.booking_id.in_(booking_ids))).all())
+        db.scalars(
+            select(Invoice).where(
+                Invoice.booking_id.in_(booking_ids),
+                Invoice.is_deleted.is_(False),
+            )).all())
     invoices_by_booking_id: dict[int, Invoice] = {
         invoice.booking_id: invoice
         for invoice in invoices_list
@@ -693,7 +712,10 @@ def create_booking_item_for_actor(
         )
 
     invoice = db.scalar(
-        select(Invoice).where(Invoice.booking_id == booking.id))
+        select(Invoice).where(
+            Invoice.booking_id == booking.id,
+            Invoice.is_deleted.is_(False),
+        ))
     if invoice is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -736,6 +758,7 @@ def create_booking_item_for_actor(
         select(BookingItem).where(
             BookingItem.booking_id == booking.id,
             BookingItem.service_id == service_id,
+            BookingItem.is_deleted.is_(False),
         ))
     if existing is not None:
         existing.qty = qty
@@ -777,7 +800,11 @@ def put_booking_item_for_actor(
 ) -> tuple[BookingItem | None, Booking, int | None]:
     """Set ``qty`` on a line by primary key, or delete when ``qty`` is 0; recompute invoice."""
 
-    row = db.get(BookingItem, booking_item_id)
+    row = db.scalar(
+        select(BookingItem).where(
+            BookingItem.id == booking_item_id,
+            BookingItem.is_deleted.is_(False),
+        ))
     if row is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -804,7 +831,10 @@ def put_booking_item_for_actor(
     booking = bookings[0]
 
     invoice = db.scalar(
-        select(Invoice).where(Invoice.booking_id == booking.id))
+        select(Invoice).where(
+            Invoice.booking_id == booking.id,
+            Invoice.is_deleted.is_(False),
+        ))
     if invoice is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -895,7 +925,10 @@ def replace_booking_items_for_actor(
         )
 
     invoice = db.scalar(
-        select(Invoice).where(Invoice.booking_id == booking.id))
+        select(Invoice).where(
+            Invoice.booking_id == booking.id,
+            Invoice.is_deleted.is_(False),
+        ))
     if invoice is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1043,3 +1076,81 @@ def patch_booking_for_actor(
         payload={"fields": "partial"},
     )
     return booking
+
+
+def soft_delete_booking_for_actor(
+    db: Session,
+    *,
+    actor: User,
+    actor_role: UserRole,
+    actor_franchise_id: int | None,
+    booking_id: int,
+) -> Booking:
+    bookings = _query_bookings(
+        db,
+        actor=actor,
+        actor_role=actor_role,
+        actor_franchise_id=actor_franchise_id,
+        booking_id=booking_id,
+        order_desc_by_created=False,
+    )
+    if not bookings:
+        raise AppError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message="Booking not found.",
+            error_code="BOOKING_NOT_FOUND",
+            details={"booking_id": booking_id},
+        )
+    booking = bookings[0]
+
+    _soft_delete_booking_tree(db, booking=booking)
+
+    write_audit_log(
+        db,
+        action="booking.delete",
+        entity_name="bookings",
+        entity_id=str(booking.id),
+        actor_user_id=actor.id,
+        franchise_id=booking.franchise_id,
+        payload={"is_deleted": True},
+    )
+    return booking
+
+
+def _soft_delete_booking_tree(
+    db: Session,
+    *,
+    booking: Booking,
+) -> tuple[Booking, Invoice | None, list[BookingItem], list[Payment]]:
+    """Soft-delete a booking plus its invoice, payments, and booking items."""
+
+    if booking.is_deleted is False:
+        booking_items = list(
+            db.scalars(
+                select(BookingItem).where(
+                    BookingItem.booking_id == booking.id,
+                    BookingItem.is_deleted.is_(False),
+                )).all())
+        for item in booking_items:
+            item.is_deleted = True
+
+        invoice = db.scalar(
+            select(Invoice).where(
+                Invoice.booking_id == booking.id,
+                Invoice.is_deleted.is_(False),
+            ))
+        if invoice is not None:
+            payments = list(
+                db.scalars(
+                    select(Payment).where(
+                        Payment.invoice_id == invoice.id,
+                        Payment.is_deleted.is_(False),
+                    )).all())
+            for payment in payments:
+                payment.is_deleted = True
+            invoice.is_deleted = True
+
+        booking.is_deleted = True
+        db.flush()
+
+    return booking, invoice, booking_items, payments

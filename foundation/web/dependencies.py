@@ -38,7 +38,11 @@ def _get_user_context(
     # Only active users may authenticate; deactivated users are indistinguishable
     # from unknown ids here (same 401) unless we split the query for messaging.
     user = db.scalar(
-        select(User).where(User.id == user_id, User.is_active.is_(True)))
+        select(User).where(
+            User.id == user_id,
+            User.is_active.is_(True),
+            User.is_deleted.is_(False),
+        ))
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="User not found.")

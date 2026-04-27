@@ -12,6 +12,7 @@ from domains.users.application.service import (
     serialize_user_detail,
     serialize_user_summary,
     reset_password_for_actor,
+    soft_delete_user_for_actor,
     update_user_active_status_for_actor,
     update_user_access_for_actor,
     update_user_permissions_for_actor,
@@ -21,6 +22,7 @@ from domains.users.domain.access import (
     ACTIVATE_USERS,
     CREATE_USERS,
     DEACTIVATE_USERS,
+    DELETE_USERS,
     MAIN_ADMIN_ROLE,
     RESET_USER_PASSWORD,
     UPDATE_USER_ACCESS,
@@ -464,6 +466,39 @@ def reset_user_password(
             message="Password reset successfully.",
             data={
                 "user_id": user.id,
+                "updated_at": str(user.updated_at),
+            },
+            status_code=status.HTTP_200_OK,
+        )
+
+
+@router.delete("/{user_id}")
+def delete_user(
+        user_id: int,
+        context: UserContext = Depends(require_permissions(DELETE_USERS)),
+        db: Session = Depends(get_db),
+) -> dict:
+    """Soft-delete a user. **Auth:** `DELETE_USERS` (main admin only)."""
+    try:
+        user = soft_delete_user_for_actor(
+            db,
+            actor=context.user,
+            actor_role=context.role,
+            user_id=user_id,
+        )
+        db.commit()
+    except AppError as exc:
+        db.rollback()
+        return error_response(exc)
+    except Exception:
+        db.rollback()
+        return internal_error_response()
+    else:
+        return success_response(
+            message="User deleted successfully.",
+            data={
+                "id": user.id,
+                "is_deleted": user.is_deleted,
                 "updated_at": str(user.updated_at),
             },
             status_code=status.HTTP_200_OK,

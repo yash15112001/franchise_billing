@@ -8,7 +8,10 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from domains.audit.application.service import write_audit_log
+from domains.bookings.infrastructure.models import Booking, BookingItem
 from domains.franchises.infrastructure.models import Franchise
+from domains.invoicing.infrastructure.models import Invoice
+from domains.payments.infrastructure.models import Payment
 from foundation.errors import AppError
 from foundation.security.auth import (
     hash_password,
@@ -70,7 +73,7 @@ def list_users_for_actor(
     email: str | None,
     role: UserRole | None,
 ) -> list[User]:
-    statement = select(User)
+    statement = select(User).where(User.is_deleted.is_(False))
 
     if actor_role is UserRole.MAIN_ADMIN:
         pass
@@ -111,7 +114,10 @@ def get_user_for_actor(
 ) -> tuple[User, Franchise | None]:
     statement = (select(User, Franchise).outerjoin(
         Franchise,
-        Franchise.id == User.franchise_id).where(User.id == user_id))
+        Franchise.id == User.franchise_id).where(
+            User.id == user_id,
+            User.is_deleted.is_(False),
+        ))
 
     if actor_role is UserRole.MAIN_ADMIN:
         pass
@@ -198,6 +204,19 @@ def create_user_for_actor(
             status_code=status.HTTP_400_BAD_REQUEST,
             message="Franchise id is required when main admin creates a user.",
             error_code="MISSING_FRANCHISE_ID",
+        )
+
+    franchise = db.scalar(
+        select(Franchise).where(
+            Franchise.id == resolved_franchise_id,
+            Franchise.is_deleted.is_(False),
+        ))
+    if franchise is None:
+        raise AppError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message="Franchise not found.",
+            error_code="FRANCHISE_NOT_FOUND",
+            details={"franchise_id": resolved_franchise_id},
         )
 
     invalid_extra_permissions = sorted({
@@ -311,7 +330,8 @@ def update_user_profile_for_actor(
 ) -> User:
     """Update profile. ``full_name`` / ``email`` are expected to match ``UpdateUserProfileRequest`` when set."""
 
-    user = db.scalar(select(User).where(User.id == user_id))
+    user = db.scalar(
+        select(User).where(User.id == user_id, User.is_deleted.is_(False)))
     if user is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -387,7 +407,8 @@ def update_user_access_for_actor(
             error_code="EMPTY_ACCESS_UPDATE",
         )
 
-    user = db.scalar(select(User).where(User.id == user_id))
+    user = db.scalar(
+        select(User).where(User.id == user_id, User.is_deleted.is_(False)))
     if user is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -480,7 +501,11 @@ def get_permissions_for_existing_user(
     user_id: int,
 ) -> dict:
     user = db.scalar(
-        select(User).where(User.id == user_id, User.is_active.is_(True)))
+        select(User).where(
+            User.id == user_id,
+            User.is_active.is_(True),
+            User.is_deleted.is_(False),
+        ))
     if user is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -536,7 +561,8 @@ def update_user_permissions_for_actor(
             error_code="FORBIDDEN_PERMISSION_UPDATE",
         )
 
-    user = db.scalar(select(User).where(User.id == user_id))
+    user = db.scalar(
+        select(User).where(User.id == user_id, User.is_deleted.is_(False)))
     if user is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -634,7 +660,8 @@ def update_user_active_status_for_actor(
     user_id: int,
     is_active: bool,
 ) -> User:
-    user = db.scalar(select(User).where(User.id == user_id))
+    user = db.scalar(
+        select(User).where(User.id == user_id, User.is_deleted.is_(False)))
     if user is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -712,7 +739,8 @@ def reset_password_for_actor(
             error_code="FORBIDDEN_SELF_PASSWORD_RESET",
         )
 
-    user = db.scalar(select(User).where(User.id == user_id))
+    user = db.scalar(
+        select(User).where(User.id == user_id, User.is_deleted.is_(False)))
     if user is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -785,5 +813,97 @@ def reset_password_for_actor(
         actor_user_id=actor.id,
         franchise_id=user.franchise_id,
         payload={},
+    )
+    return user
+
+
+def soft_delete_user_for_actor(
+    db: Session,
+    *,
+    actor: User,
+    actor_role: UserRole,
+    user_id: int,
+) -> User:
+    if actor_role is not UserRole.MAIN_ADMIN:
+        raise AppError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            message="Only main admin can delete users.",
+            error_code="FORBIDDEN_USER_DELETE",
+        )
+
+    user = db.scalar(
+        select(User).where(User.id == user_id, User.is_deleted.is_(False)))
+    if user is None:
+        raise AppError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message="User not found.",
+            error_code="USER_NOT_FOUND",
+            details={"user_id": user_id},
+        )
+
+    if user.role is UserRole.MAIN_ADMIN:
+        raise AppError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            message="Main admin cannot be deleted through this endpoint.",
+            error_code="FORBIDDEN_MAIN_ADMIN_DELETE",
+        )
+
+    if user.is_deleted is False:
+        booking_ids = list(
+            db.scalars(
+                select(Booking.id).where(
+                    Booking.created_by == user.id,
+                    Booking.is_deleted.is_(False),
+                )).all())
+        if booking_ids:
+            booking_items = list(
+                db.scalars(
+                    select(BookingItem).where(
+                        BookingItem.booking_id.in_(booking_ids),
+                        BookingItem.is_deleted.is_(False),
+                    )).all())
+            for item in booking_items:
+                item.is_deleted = True
+
+            invoices = list(
+                db.scalars(
+                    select(Invoice).where(
+                        Invoice.booking_id.in_(booking_ids),
+                        Invoice.is_deleted.is_(False),
+                    )).all())
+            if invoices:
+                invoice_ids = [invoice.id for invoice in invoices]
+                payments = list(
+                    db.scalars(
+                        select(Payment).where(
+                            Payment.invoice_id.in_(invoice_ids),
+                            Payment.is_deleted.is_(False),
+                        )).all())
+                for payment in payments:
+                    payment.is_deleted = True
+                for invoice in invoices:
+                    invoice.is_deleted = True
+
+            bookings = list(
+                db.scalars(
+                    select(Booking).where(
+                        Booking.id.in_(booking_ids),
+                        Booking.is_deleted.is_(False),
+                    )).all())
+            for booking in bookings:
+                booking.is_deleted = True
+
+        user.is_deleted = True
+        db.add(user)
+        db.flush()
+
+    write_audit_log(
+        db,
+        action="user.delete",
+        entity_name="users",
+        entity_id=str(user.id),
+        actor_user_id=actor.id,
+        franchise_id=user.franchise_id,
+        payload={"is_deleted": True},
     )
     return user

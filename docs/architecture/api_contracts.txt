@@ -43,11 +43,10 @@ Franchise
         - returns json : {id, status, updated_at }
 
     delete /franchises/{franchise_id}
-        - based on role, not every user will be able to perform this operation
-        - rare chance of this happening, cant actually delete the franchise, since many more info like user, customer, vehicle, booking, invoice, payment depends on it
-        - should soft delete the franchise
-        - should I add is_deleted in franchise table?    
-        - I think I will not implement the delete on franchise for now
+        - only main_admin can delete a franchise
+        - soft deletes the franchise
+        - also soft deletes its timings, reviews, commission policies, users, customers, vehicles, bookings, booking items, invoices, and payments
+        - returns json : { id, is_deleted, updated_at }
 
 ======================================================================================================================================================================================================================================================================================================
 
@@ -299,9 +298,10 @@ Customer
         - request_body : { full_name, email, mobile_number, whatsapp_number, type }
         - returns json : { customer_id, updated_at }
     delete /customers/{customer_id}
-        - based on role, the scope till which customers is deleted is limited as above
-        - very rare chances of being used
-        - will not be implemented
+        - only main_admin can delete customers
+        - soft deletes the customer
+        - also soft deletes all vehicles of that customer, all bookings of those vehicles, booking items of those bookings, invoices of those bookings, payments of those invoices, and franchise reviews of that customer
+        - returns json : { id, is_deleted, updated_at }
 
 ======================================================================================================================================================================================================================================================================================================
 
@@ -321,6 +321,11 @@ Vehicle
         - request_body : { name?, customer_id, franchise_id, registration_number, colour, model, vehicle_type }
         - returns json : { id, name, customer_id, franchise_id, registration_number, colour, model, vehicle_type, created_at, updated_at }
         - rare usage
+    delete /vehicles/{vehicle_id}
+        - only main_admin can delete vehicles
+        - soft deletes the vehicle
+        - also soft deletes all bookings of that vehicle, booking items of those bookings, invoices of those bookings, and payments of those invoices
+        - returns json : { id, is_deleted, updated_at }
     patch /vehicles/{vehicle_id}
         - only name, vehicle_type, color, model can be changed
         - not every one can change it though, main_admin can change info of any vehicles, franchise_staff & franchise_admin can only update vehicle info of customer of franchise
@@ -516,6 +521,10 @@ Invoice
     get /invoices/{invoice_id}
         - same as above contract, but only sends specific invoice
         - returns full nested details of booking, franchise, customer
+    delete /invoices/{invoice_id}
+        - exception case : deleting invoice also deletes its parent booking
+        - soft deletes : invoice, related payments, related booking, and booking items of that booking
+        - returns : { id, booking_id, is_deleted, updated_at }
     get /invoices?invoice_number={invoice_number}&franchise_id={franchise_id}&booking_id={booking_id}&gst_included={gst_included}&payment_status={payment_status}
         - same as above contract
         - returns minimal details

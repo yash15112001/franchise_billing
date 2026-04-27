@@ -64,6 +64,7 @@ class Franchise(Base):
         Numeric(12, 2),
         nullable=True,
     )
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     location_url: Mapped[str | None] = mapped_column(String(512),
                                                      nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -112,6 +113,7 @@ class CommissionPolicy(Base):
     effective_from: Mapped[date] = mapped_column(Date, index=True)
     effective_till: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -148,6 +150,7 @@ class FranchiseTiming(Base):
         ),
         index=True,
     )
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     open_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     close_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -176,6 +179,7 @@ class FranchiseReview(Base):
         ForeignKey("customers.id"),
         index=True,
     )
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     rating: Mapped[Decimal] = mapped_column(Numeric(2, 1))
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -18,6 +18,7 @@ class Invoice(Base):
     franchise_id: Mapped[int] = mapped_column(ForeignKey("franchises.id"), index=True)
     booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id"), index=True)
     gst_included: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     gst_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
     total_base_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))
     total_payable_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"))

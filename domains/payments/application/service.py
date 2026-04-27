@@ -68,6 +68,9 @@ def _query_payments(
     statement = select(Payment).join(
         Invoice,
         Invoice.id == Payment.invoice_id,
+    ).where(
+        Payment.is_deleted.is_(False),
+        Invoice.is_deleted.is_(False),
     )
     if order_desc_by_created:
         statement = statement.order_by(Payment.created_at.desc())
@@ -165,7 +168,11 @@ def get_payment_detail_bundle_for_actor(
         actor_franchise_id=actor_franchise_id,
         payment_id=payment_id,
     )
-    invoice = db.get(Invoice, payment.invoice_id)
+    invoice = db.scalar(
+        select(Invoice).where(
+            Invoice.id == payment.invoice_id,
+            Invoice.is_deleted.is_(False),
+        ))
     if invoice is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -196,7 +203,11 @@ def patch_payment_reference_for_actor(
         payment_id=payment_id,
     )
 
-    invoice = db.get(Invoice, payment.invoice_id)
+    invoice = db.scalar(
+        select(Invoice).where(
+            Invoice.id == payment.invoice_id,
+            Invoice.is_deleted.is_(False),
+        ))
     franchise_id = invoice.franchise_id if invoice is not None else None
 
     payment.reference_number = reference_number

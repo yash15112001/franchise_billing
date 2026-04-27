@@ -18,6 +18,7 @@ from domains.bookings.application.service import (
     patch_booking_for_actor,
     put_booking_item_for_actor,
     replace_booking_items_for_actor,
+    soft_delete_booking_for_actor,
 )
 from domains.bookings.domain.enums import BookingServiceStatus
 from domains.bookings.interfaces.schemas import (
@@ -37,6 +38,7 @@ from domains.bookings.interfaces.serializers import (
 )
 from domains.users.domain.access import (
     CREATE_BOOKING,
+    DELETE_BOOKINGS,
     MANAGE_BOOKING_ITEMS,
     UPDATE_BOOKINGS,
     VIEW_BOOKINGS,
@@ -293,6 +295,40 @@ def get_booking(
                 vehicle=vehicle,
                 creator=created_by,
             ),
+            status_code=http_status.HTTP_200_OK,
+        )
+
+
+@router.delete("/{booking_id}")
+def delete_booking(
+        booking_id: int,
+        context: UserContext = Depends(require_permissions(DELETE_BOOKINGS)),
+        db: Session = Depends(get_db),
+) -> dict:
+    """Soft-delete booking and its invoice/payment/booking-item tree."""
+    try:
+        booking = soft_delete_booking_for_actor(
+            db,
+            actor=context.user,
+            actor_role=context.role,
+            actor_franchise_id=context.franchise_id,
+            booking_id=booking_id,
+        )
+        db.commit()
+    except AppError as exc:
+        db.rollback()
+        return error_response(exc)
+    except Exception:
+        db.rollback()
+        return internal_error_response()
+    else:
+        return success_response(
+            message="Booking deleted successfully.",
+            data={
+                "id": booking.id,
+                "is_deleted": booking.is_deleted,
+                "updated_at": str(booking.updated_at),
+            },
             status_code=http_status.HTTP_200_OK,
         )
 

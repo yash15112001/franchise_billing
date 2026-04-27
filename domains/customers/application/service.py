@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from domains.audit.application.service import write_audit_log
+from domains.bookings.application.service import _soft_delete_booking_tree
 from domains.bookings.infrastructure.models import Booking
 from domains.catalog.infrastructure.models import Service
 from domains.customers.domain.customer_list_row import CustomerListRow
@@ -20,6 +21,8 @@ from domains.customers.interfaces.serializers import (
     serialize_invoice_detail_for_history,
     serialize_vehicle_row,
 )
+from domains.franchises.infrastructure.models import FranchiseReview
+from domains.franchises.infrastructure.models import Franchise
 from domains.invoicing.infrastructure.models import Invoice
 from domains.users.application.service import serialize_user_summary
 from domains.users.domain.access import UserRole
@@ -66,7 +69,7 @@ def _query_customers(
     whatsapp_number = _optional_customer_query_text(whatsapp_number)
     email = _optional_customer_query_text(email)
 
-    statement = select(Customer)
+    statement = select(Customer).where(Customer.is_deleted.is_(False))
     if actor_role is UserRole.MAIN_ADMIN:
         if franchise_id is not None:
             statement = statement.where(Customer.franchise_id == franchise_id)
@@ -216,7 +219,10 @@ def customer_aggregates_map(
             Booking.customer_id,
             func.max(Booking.created_at),
             func.count(Booking.id),
-        ).where(Booking.customer_id.in_(customer_ids)).group_by(
+        ).where(
+            Booking.customer_id.in_(customer_ids),
+            Booking.is_deleted.is_(False),
+        ).group_by(
             Booking.customer_id)).all()
     booking_map: dict[int, tuple[Any, int]] = {
         row[0]: (row[1], int(row[2]))
@@ -230,7 +236,11 @@ def customer_aggregates_map(
         ).select_from(Booking).join(
             Invoice,
             Invoice.booking_id == Booking.id,
-        ).where(Booking.customer_id.in_(customer_ids)).group_by(
+        ).where(
+            Booking.customer_id.in_(customer_ids),
+            Booking.is_deleted.is_(False),
+            Invoice.is_deleted.is_(False),
+        ).group_by(
             Booking.customer_id)).all()
     spend_map = {row[0]: _money(Decimal(str(row[1]))) for row in spend_rows}
 
@@ -268,6 +278,18 @@ def create_customer_for_actor(
                 error_code="MISSING_FRANCHISE_ID",
             )
         resolved_franchise_id = franchise_id
+        franchise = db.scalar(
+            select(Franchise).where(
+                Franchise.id == resolved_franchise_id,
+                Franchise.is_deleted.is_(False),
+            ))
+        if franchise is None:
+            raise AppError(
+                status_code=status.HTTP_404_NOT_FOUND,
+                message="Franchise not found.",
+                error_code="FRANCHISE_NOT_FOUND",
+                details={"franchise_id": resolved_franchise_id},
+            )
     else:
         if actor_franchise_id is None:
             raise AppError(
@@ -340,7 +362,10 @@ def update_customer_for_actor(
     whatsapp_number: str | None,
     customer_type: CustomerType | None,
 ) -> Customer:
-    statement = select(Customer).where(Customer.id == customer_id)
+    statement = select(Customer).where(
+        Customer.id == customer_id,
+        Customer.is_deleted.is_(False),
+    )
     if actor_role is UserRole.MAIN_ADMIN:
         pass
     else:
@@ -439,7 +464,10 @@ def get_customer_history_for_actor(
 
     bookings = list(
         db.scalars(
-            select(Booking).where(Booking.customer_id == customer.id).options(
+            select(Booking).where(
+                Booking.customer_id == customer.id,
+                Booking.is_deleted.is_(False),
+            ).options(
                 selectinload(Booking.items)).order_by(
                     Booking.created_at.desc())).all())
     vehicle_ids = {b.vehicle_id for b in bookings}
@@ -463,7 +491,9 @@ def get_customer_history_for_actor(
     if booking_ids:
         for inv in db.scalars(
                 select(Invoice).where(
-                    Invoice.booking_id.in_(booking_ids))).all():
+                    Invoice.booking_id.in_(booking_ids),
+                    Invoice.is_deleted.is_(False),
+                )).all():
             bid = inv.booking_id
             if bid is not None and bid not in invoices_by_booking:
                 invoices_by_booking[bid] = inv
@@ -554,6 +584,7 @@ def _query_vehicles(
 
     statement = select(Vehicle).join(Customer,
                                      Customer.id == Vehicle.customer_id)
+    statement = statement.where(Vehicle.is_deleted.is_(False))
 
     if actor_role is UserRole.MAIN_ADMIN:
         if franchise_id is not None:
@@ -700,7 +731,11 @@ def create_vehicle_for_actor(
                 actor_franchise_id,
             )
 
-    customer = db.get(Customer, customer_id)
+    customer = db.scalar(
+        select(Customer).where(
+            Customer.id == customer_id,
+            Customer.is_deleted.is_(False),
+        ))
     if customer is None:
         raise AppError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -764,7 +799,10 @@ def update_vehicle_for_actor(
     colour: str | None,
     model: str | None,
 ) -> Vehicle:
-    statement = select(Vehicle).where(Vehicle.id == vehicle_id)
+    statement = select(Vehicle).where(
+        Vehicle.id == vehicle_id,
+        Vehicle.is_deleted.is_(False),
+    )
     if actor_role is UserRole.MAIN_ADMIN:
         pass
     else:
@@ -808,5 +846,119 @@ def update_vehicle_for_actor(
         actor_user_id=actor.id,
         franchise_id=vehicle.franchise_id,
         payload={"fields": "partial"},
+    )
+    return vehicle
+
+
+def soft_delete_customer_for_actor(
+    db: Session,
+    *,
+    actor: User,
+    actor_role: UserRole,
+    actor_franchise_id: int | None,
+    customer_id: int,
+) -> Customer:
+    rows = _query_customers(
+        db,
+        actor=actor,
+        actor_role=actor_role,
+        actor_franchise_id=actor_franchise_id,
+        customer_id=customer_id,
+    )
+    if not rows:
+        raise AppError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message="Customer not found.",
+            error_code="CUSTOMER_NOT_FOUND",
+            details={"customer_id": customer_id},
+        )
+
+    customer = rows[0]
+    vehicles = list(
+        db.scalars(
+            select(Vehicle).where(
+                Vehicle.customer_id == customer.id,
+                Vehicle.is_deleted.is_(False),
+            )).all())
+    for vehicle in vehicles:
+        soft_delete_vehicle_for_actor(
+            db,
+            actor=actor,
+            actor_role=actor_role,
+            actor_franchise_id=actor_franchise_id,
+            vehicle_id=vehicle.id,
+        )
+
+    reviews = list(
+        db.scalars(
+            select(FranchiseReview).where(
+                FranchiseReview.customer_id == customer.id,
+                FranchiseReview.is_deleted.is_(False),
+            )).all())
+    for review in reviews:
+        review.is_deleted = True
+
+    if customer.is_deleted is False:
+        customer.is_deleted = True
+        db.flush()
+
+    write_audit_log(
+        db,
+        action="customer.delete",
+        entity_name="customers",
+        entity_id=str(customer.id),
+        actor_user_id=actor.id,
+        franchise_id=customer.franchise_id,
+        payload={"is_deleted": True},
+    )
+    return customer
+
+
+def soft_delete_vehicle_for_actor(
+    db: Session,
+    *,
+    actor: User,
+    actor_role: UserRole,
+    actor_franchise_id: int | None,
+    vehicle_id: int,
+) -> Vehicle:
+    rows = _query_vehicles(
+        db,
+        actor=actor,
+        actor_role=actor_role,
+        actor_franchise_id=actor_franchise_id,
+        vehicle_id=vehicle_id,
+    )
+    if not rows:
+        raise AppError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message="Vehicle not found.",
+            error_code="VEHICLE_NOT_FOUND",
+            details={"vehicle_id": vehicle_id},
+        )
+
+    vehicle = rows[0]
+    bookings = list(
+        db.scalars(
+            select(Booking).where(
+                Booking.vehicle_id == vehicle.id,
+                Booking.is_deleted.is_(False),
+            )).all())
+
+    for booking in bookings:
+        _soft_delete_booking_tree(db, booking=booking)
+
+    if vehicle.is_deleted is False:
+        vehicle.is_deleted = True
+        db.flush()
+
+    write_audit_log(
+        db,
+        action="vehicle.delete",
+        entity_name="vehicles",
+        entity_id=str(vehicle.id),
+        actor_user_id=actor.id,
+        franchise_id=vehicle.franchise_id,
+        payload={"is_deleted": True},
     )
     return vehicle

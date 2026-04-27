@@ -11,6 +11,7 @@ from domains.invoicing.application.service import (
     create_invoice_payment_for_actor,
     get_invoice_detail_bundle_for_actor,
     list_invoices_for_actor,
+    soft_delete_invoice_for_actor,
 )
 from domains.invoicing.domain.enums import InvoicePaymentStatus
 from domains.invoicing.interfaces.schemas import CreateInvoicePaymentRequest
@@ -21,6 +22,7 @@ from domains.invoicing.interfaces.serializers import (
 )
 from domains.users.domain.access import (
     CREATE_INVOICE_PAYMENTS,
+    DELETE_INVOICES,
     MANUAL_UPDATE_INVOICE_PAYMENT_STATUS,
     UPDATE_INVOICE_GST,
     VIEW_INVOICES,
@@ -202,5 +204,40 @@ def get_invoice(
                 booking=booking,
                 payments=payments,
             ),
+            status_code=http_status.HTTP_200_OK,
+        )
+
+
+@router.delete("/{invoice_id}")
+def delete_invoice(
+        invoice_id: int,
+        context: UserContext = Depends(require_permissions(DELETE_INVOICES)),
+        db: Session = Depends(get_db),
+) -> JSONResponse:
+    """Soft-delete an invoice by deleting its booking tree (booking exception rule)."""
+    try:
+        invoice, booking = soft_delete_invoice_for_actor(
+            db,
+            actor=context.user,
+            actor_role=context.role,
+            actor_franchise_id=context.franchise_id,
+            invoice_id=invoice_id,
+        )
+        db.commit()
+    except AppError as exc:
+        db.rollback()
+        return error_response(exc)
+    except Exception:
+        db.rollback()
+        return internal_error_response()
+    else:
+        return success_response(
+            message="Invoice deleted successfully.",
+            data={
+                "id": invoice.id,
+                "booking_id": booking.id,
+                "is_deleted": invoice.is_deleted,
+                "updated_at": str(invoice.updated_at),
+            },
             status_code=http_status.HTTP_200_OK,
         )
