@@ -29,6 +29,8 @@ class CreateFranchiseRequest(BaseModel):
     location_url: str | None = Field(default=None, max_length=512)
     gst_number: str = Field(min_length=15, max_length=15)
     pan_number: str = Field(min_length=10, max_length=10)
+    cgst: Decimal = Field(default=Decimal("9.00"), ge=0, le=100)
+    sgst: Decimal = Field(default=Decimal("9.00"), ge=0, le=100)
     monthly_target: Decimal | None = None
     description: str | None = None
 
@@ -88,6 +90,8 @@ class UpdateFranchiseRequest(BaseModel):
     country: str | None = Field(default=None, min_length=1, max_length=80)
     gst_number: str | None = Field(default=None, min_length=15, max_length=15)
     pan_number: str | None = Field(default=None, min_length=10, max_length=10)
+    cgst: Decimal | None = Field(default=None, ge=0, le=100)
+    sgst: Decimal | None = Field(default=None, ge=0, le=100)
     monthly_target: Decimal | None = None
     location_url: str | None = Field(default=None, max_length=512)
     description: str | None = None

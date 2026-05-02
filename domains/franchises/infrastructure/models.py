@@ -60,6 +60,8 @@ class Franchise(Base):
     )
     gst_number: Mapped[str] = mapped_column(String(32))
     pan_number: Mapped[str] = mapped_column(String(20))
+    cgst: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("9.00"))
+    sgst: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("9.00"))
     monthly_target: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2),
         nullable=True,

@@ -151,6 +151,8 @@ def serialize_franchise_row(
     data["status"] = franchise.status.value
     data["gst_number"] = franchise.gst_number
     data["pan_number"] = franchise.pan_number
+    data["cgst"] = str(franchise.cgst)
+    data["sgst"] = str(franchise.sgst)
     data["monthly_target"] = str(
         franchise.monthly_target
     ) if franchise.monthly_target is not None else None
@@ -173,6 +175,8 @@ def create_franchise_for_actor(
     location_url: str | None,
     gst_number: str,
     pan_number: str,
+    cgst: Decimal,
+    sgst: Decimal,
     monthly_target: Decimal | None,
     description: str | None,
 ) -> Franchise:
@@ -189,6 +193,8 @@ def create_franchise_for_actor(
         status=FranchiseStatus.PENDING_APPROVAL,
         gst_number=gst_number,
         pan_number=pan_number,
+        cgst=cgst,
+        sgst=sgst,
         monthly_target=monthly_target,
         location_url=location_url,
         description=description,
@@ -607,6 +613,8 @@ def update_franchise_for_actor(
     country: str | None,
     gst_number: str | None,
     pan_number: str | None,
+    cgst: Decimal | None,
+    sgst: Decimal | None,
     monthly_target: Decimal | None,
     location_url: str | None,
     description: str | None,
@@ -639,6 +647,10 @@ def update_franchise_for_actor(
         franchise.gst_number = gst_number
     if pan_number is not None:
         franchise.pan_number = pan_number
+    if cgst is not None:
+        franchise.cgst = cgst
+    if sgst is not None:
+        franchise.sgst = sgst
     if monthly_target is not None:
         franchise.monthly_target = monthly_target
     if location_url is not None:

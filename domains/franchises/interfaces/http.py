@@ -151,6 +151,8 @@ def create_franchise(
             location_url=payload.location_url,
             gst_number=payload.gst_number,
             pan_number=payload.pan_number,
+            cgst=payload.cgst,
+            sgst=payload.sgst,
             monthly_target=payload.monthly_target,
             description=payload.description,
         )
@@ -193,6 +195,8 @@ def update_franchise(
             country=payload.country,
             gst_number=payload.gst_number,
             pan_number=payload.pan_number,
+            cgst=payload.cgst,
+            sgst=payload.sgst,
             monthly_target=payload.monthly_target,
             location_url=payload.location_url,
             description=payload.description,

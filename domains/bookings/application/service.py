@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 _MONEY_QUANT = Decimal("0.01")
 # Standard GST rate for services (exclusive); adjust if product rules change.
+# Used as fallback if no rate is provided (not used after dynamic GST updates, but kept for legacy if needed)
 _GST_RATE = Decimal("0.18")
 
 
@@ -60,6 +61,7 @@ def _invoice_totals_from_pairs(
     requested_pairs: Sequence[tuple[int, int]],
     services_by_id: dict[int, Service],
     gst_included: bool,
+    gst_rate: Decimal,
 ) -> tuple[Decimal, Decimal, Decimal]:
     """Return ``(total_base_amount, gst_amount, total_payable_amount)``."""
 
@@ -70,7 +72,7 @@ def _invoice_totals_from_pairs(
         total_base_amount += _money(service_net_unit_price * Decimal(qty))
     total_base_amount = _money(total_base_amount)
     if gst_included:
-        gst_amount = _money(total_base_amount * _GST_RATE)
+        gst_amount = _money(total_base_amount * gst_rate)
         total_payable_amount = _money(total_base_amount + gst_amount)
     else:
         gst_amount = Decimal("0.00")
@@ -120,10 +122,15 @@ def _apply_invoice_totals_from_booking_items(
         for service in services
     }
 
+    from domains.franchises.infrastructure.models import Franchise
+    franchise = db.get(Franchise, invoice.franchise_id)
+    gst_rate = (franchise.cgst + franchise.sgst) / Decimal("100")
+
     total_base_amount, gst_amount, total_payable_amount = _invoice_totals_from_pairs(
         pairs_after,
         services_by_id,
         invoice.gst_included,
+        gst_rate,
     )
 
     invoice.total_base_amount = total_base_amount
@@ -200,12 +207,13 @@ def create_booking_for_actor(
                 actor_franchise_id,
             )
 
-    get_franchise_for_actor(
+    franchise = get_franchise_for_actor(
         db,
         actor_role=actor_role,
         actor_franchise_id=actor_franchise_id,
         franchise_id=resolved_franchise_id,
     )
+    gst_rate = (franchise.cgst + franchise.sgst) / Decimal("100")
 
     customer = db.scalar(
         select(Customer).where(
@@ -298,7 +306,7 @@ def create_booking_for_actor(
             )
 
     total_base_amount, gst_amount, total_payable_amount = _invoice_totals_from_pairs(
-        requested_pairs, services_by_id, gst_included)
+        requested_pairs, services_by_id, gst_included, gst_rate)
 
     booking = Booking(
         franchise_id=resolved_franchise_id,
