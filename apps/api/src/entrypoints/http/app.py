@@ -13,6 +13,7 @@ from domains.catalog.interfaces.http import router as catalog_router
 from domains.customers.interfaces.http import customers_router, vehicles_router
 from domains.franchises.interfaces.http import router as franchises_router
 from domains.invoicing.interfaces.http import router as invoicing_router
+from domains.notifications.interfaces.http import router as notifications_router
 from domains.payments.interfaces.http import router as payments_router
 # from domains.reports.interfaces.http import router as reports_router
 # from domains.settlements.interfaces.http import router as settlements_router
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(bookings_router, prefix=settings.api_prefix)
     app.include_router(booking_items_router, prefix=settings.api_prefix)
     app.include_router(invoicing_router, prefix=settings.api_prefix)
+    app.include_router(notifications_router, prefix=settings.api_prefix)
     app.include_router(payments_router, prefix=settings.api_prefix)
     # app.include_router(reports_router, prefix=settings.api_prefix)
     # app.include_router(settlements_router, prefix=settings.api_prefix)

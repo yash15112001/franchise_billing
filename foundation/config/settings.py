@@ -58,6 +58,29 @@ class Settings(BaseSettings):
         description="HS* signing key for JWT access tokens.",
     )
     jwt_algorithm: str = "HS512"
+    interakt_api_key: str | None = Field(
+        default=None,
+        description="Interakt API key from Developer Settings.",
+    )
+    interakt_base_url: str = Field(
+        default="https://api.interakt.ai",
+        min_length=1,
+        description="Base URL for Interakt public API requests.",
+    )
+    interakt_default_country_code: str = Field(
+        default="+91",
+        min_length=1,
+        description="Default country code used when stored numbers omit it.",
+    )
+    interakt_template_name: str | None = Field(
+        default=None,
+        description="Interakt template name used for proof WhatsApp sends.",
+    )
+    interakt_template_language_code: str = Field(
+        default="en",
+        min_length=1,
+        description="Language code for the Interakt template.",
+    )
 
 
 def resolved_dotenv_path() -> Path | None:

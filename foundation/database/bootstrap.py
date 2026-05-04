@@ -5,6 +5,7 @@ from domains.catalog.infrastructure import models as catalog_models  # noqa: F40
 from domains.franchises.infrastructure import models as franchise_models  # noqa: F401
 from domains.customers.infrastructure import models as customer_models  # noqa: F401
 from domains.invoicing.infrastructure import models as invoice_models  # noqa: F401
+from domains.notifications.infrastructure import models as notification_models  # noqa: F401
 from domains.payments.infrastructure import models as payment_models  # noqa: F401
 # from domains.settlements.infrastructure import models as settlement_models  # noqa: F401
 from domains.users.infrastructure import models as users_models  # noqa: F401
