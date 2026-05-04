@@ -80,3 +80,8 @@ dev :
 
 username: franchise_billing
 password: FranchiseBilling@2026
+
+aws rds testing db : 
+
+username : dnb_car_detailling_main_admin
+password : dnb_car_detailling_main_admin

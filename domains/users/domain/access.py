@@ -91,6 +91,9 @@ RECORD_PAYMENT = "payment:record"
 VIEW_PAYMENTS = "payment:view"
 UPDATE_PAYMENT_REFERENCE = "payment:update_reference"
 
+# Notifications
+SEND_NOTIFICATIONS = "notification:send"
+
 # Reports
 VIEW_REPORT_OVERVIEW = "report:overview_view"
 VIEW_REVENUE_DAILY_SUMMARY = "report:revenue_daily_summary_view"
@@ -175,6 +178,8 @@ ALL_PERMISSION_CODES = {
     MANUAL_UPDATE_INVOICE_PAYMENT_STATUS,
     # Payment
     UPDATE_PAYMENT_REFERENCE,
+    # Notifications
+    SEND_NOTIFICATIONS,
     # Reports
     VIEW_REPORT_OVERVIEW,
     VIEW_REVENUE_DAILY_SUMMARY,
@@ -232,6 +237,7 @@ DEFAULT_ROLE_PERMISSIONS = {
         MANAGE_USERS,
         RECORD_PAYMENT,
         VIEW_PAYMENTS,
+        SEND_NOTIFICATIONS,
         VIEW_REPORTS,
         SETTLE_DAY,
         # Franchise
@@ -281,6 +287,7 @@ DEFAULT_ROLE_PERMISSIONS = {
         VIEW_CUSTOMERS,
         RECORD_PAYMENT,
         VIEW_PAYMENTS,
+        SEND_NOTIFICATIONS,
         VIEW_REPORTS,
         # Franchise
         VIEW_FRANCHISES,

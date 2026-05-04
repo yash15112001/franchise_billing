@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from starlette import status
+
+from domains.notifications.application.service import send_booking_invoice_whatsapp_proof_for_actor
+from domains.notifications.interfaces.schemas import SendWhatsAppTextRequest
+from domains.users.domain.access import SEND_NOTIFICATIONS
+from foundation.database.session import get_db
+from foundation.errors import AppError
+from foundation.web.dependencies import UserContext, require_permissions
+from foundation.web.responses import error_response, internal_error_response, success_response
+
+router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+
+@router.post("/whatsapp/messages")
+def send_whatsapp_text_message(
+    payload: SendWhatsAppTextRequest,
+    context: UserContext = Depends(require_permissions(SEND_NOTIFICATIONS)),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        notification = send_booking_invoice_whatsapp_proof_for_actor(
+            db,
+            actor=context.user,
+            actor_role=context.role,
+            actor_franchise_id=context.franchise_id,
+            customer_id=payload.customer_id,
+            booking_id=payload.booking_id,
+        )
+        db.commit()
+    except AppError as exc:
+        db.rollback()
+        return error_response(exc)
+    except Exception:
+        db.rollback()
+        return internal_error_response()
+    else:
+        return success_response(
+            message="WhatsApp proof message sent successfully.",
+            data={
+                "notification_id": notification.id,
+                "channel": notification.channel.value,
+                "message_type": notification.message_type.value,
+                "recipient": notification.recipient,
+                "provider_message_id": notification.provider_message_id,
+                "delivery_status": notification.delivery_status.value,
+                "invoice_id": notification.invoice_id,
+                "customer_id": notification.customer_id,
+            },
+            status_code=status.HTTP_201_CREATED,
+        )
