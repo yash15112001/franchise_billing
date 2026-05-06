@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
+from datetime import datetime
+from pathlib import Path
 from urllib import error, request
 
-from fastapi import status
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+from fastapi import UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,27 +28,115 @@ from domains.users.infrastructure.models import User
 from foundation.config.settings import get_settings
 from foundation.errors import AppError
 
+logger = logging.getLogger(__name__)
+INVOICE_PDF_S3_PREFIX = "invoice-pdfs"
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+_MULTI_UNDERSCORE_RE = re.compile(r"_+")
 
-def _require_interakt_config() -> tuple[str, str, str, str]:
-    settings = get_settings()
-    missing = []
-    if not settings.interakt_api_key:
-        missing.append("INTERAKT_API_KEY")
-    if not settings.interakt_template_name:
-        missing.append("INTERAKT_TEMPLATE_NAME")
-    if missing:
-        raise AppError(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message="Interakt provider configuration is incomplete.",
-            error_code="INTERAKT_CONFIG_MISSING",
-            details={"missing_env_vars": missing},
-        )
-    return (
-        settings.interakt_base_url.rstrip("/"),
-        settings.interakt_api_key,
-        settings.interakt_template_name,
-        settings.interakt_template_language_code,
+def _normalize_invoice_pdf_name(value: str | None) -> str:
+    stem = Path(value or "invoice").stem.lower().strip()
+    stem = stem.replace(" ", "_")
+    stem = _NON_ALNUM_RE.sub("_", stem)
+    stem = _MULTI_UNDERSCORE_RE.sub("_", stem).strip("_")
+    return stem or "invoice"
+
+
+def _build_invoice_pdf_s3_key(
+    *,
+    booking_id: int,
+    invoice_number: str,
+    original_filename: str | None,
+) -> str:
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    normalized_file_name = _normalize_invoice_pdf_name(original_filename)
+    file_name = (
+        f"invoice_{booking_id}_{invoice_number}_{normalized_file_name}_{timestamp}.pdf"
     )
+    return f"{INVOICE_PDF_S3_PREFIX}/{file_name}"
+
+
+def upload_invoice_pdf_and_get_presigned_url(
+    *,
+    booking_id: int,
+    invoice_number: str,
+    pdf_bytes: bytes,
+    original_filename: str | None,
+    content_type: str,
+) -> tuple[str, str]:
+    settings = get_settings()
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=settings.aws_access_key_id,
+        aws_secret_access_key=settings.aws_secret_access_key,
+        region_name=settings.aws_region,
+    )
+    object_key = _build_invoice_pdf_s3_key(
+        booking_id=booking_id,
+        invoice_number=invoice_number,
+        original_filename=original_filename,
+    )
+    try:
+        s3_client.put_object(
+            Bucket=settings.s3_bucket_name,
+            Key=object_key,
+            Body=pdf_bytes,
+            ContentType=content_type,
+        )
+        presigned_url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": settings.s3_bucket_name,
+                "Key": object_key,
+            },
+            ExpiresIn=settings.s3_presigned_url_expires_seconds,
+        )
+    except (BotoCoreError, ClientError) as exc:
+        raise AppError(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            message="Failed to upload invoice PDF to S3.",
+            error_code="S3_UPLOAD_FAILED",
+            details={"reason": str(exc)},
+        ) from exc
+
+    logger.info(
+        "Uploaded invoice PDF to S3 for booking_id=%s bucket=%s key=%s",
+        booking_id,
+        settings.s3_bucket_name,
+        object_key,
+    )
+    return object_key, presigned_url
+
+
+def prepare_invoice_pdf_upload(
+    *,
+    booking_id: int,
+    invoice_number: str,
+    invoice_pdf: UploadFile,
+) -> tuple[str, str, str]:
+    if invoice_pdf.content_type != "application/pdf":
+        raise AppError(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            message="invoice_pdf must be a PDF file.",
+            error_code="INVALID_INVOICE_PDF_CONTENT_TYPE",
+            details={"content_type": invoice_pdf.content_type},
+        )
+
+    pdf_file_name = Path(invoice_pdf.filename or "invoice.pdf").name or "invoice.pdf"
+    pdf_bytes = invoice_pdf.file.read()
+    object_key, presigned_url = upload_invoice_pdf_and_get_presigned_url(
+        booking_id=booking_id,
+        invoice_number=invoice_number,
+        pdf_bytes=pdf_bytes,
+        original_filename=invoice_pdf.filename,
+        content_type=invoice_pdf.content_type,
+    )
+    logger.info(
+        "Generated invoice PDF presigned URL for booking_id=%s key=%s url=%s",
+        booking_id,
+        object_key,
+        presigned_url,
+    )
+    return object_key, presigned_url, pdf_file_name
 
 
 def _split_recipient(phone_number: str) -> tuple[str, str]:
@@ -58,7 +152,8 @@ def _split_recipient(phone_number: str) -> tuple[str, str]:
     country_digits = "".join(ch for ch in default_country_code if ch.isdigit())
     if len(digits) == 10:
         return default_country_code, digits
-    if country_digits and digits.startswith(country_digits) and len(digits) > len(country_digits):
+    if country_digits and digits.startswith(country_digits) and len(
+            digits) > len(country_digits):
         return f"+{country_digits}", digits[len(country_digits):]
     if len(digits) < 10 or len(digits) > 15:
         raise AppError(
@@ -78,16 +173,25 @@ def _build_interakt_template_payload(
     booking_id: int,
     invoice_number: str,
     total_payable_amount: str,
+    invoice_pdf_url: str,
+    invoice_pdf_file_name: str,
 ) -> dict:
-    _base_url, _api_key, template_name, template_language_code = _require_interakt_config()
+    settings = get_settings()
     return {
         "countryCode": country_code,
         "phoneNumber": phone_number,
         "type": "Template",
         "callbackData": f"booking:{booking_id}|invoice:{invoice_number}",
         "template": {
-            "name": template_name,
-            "languageCode": template_language_code,
+            "name":
+            settings.interakt_template_name,
+            "languageCode":
+            settings.interakt_template_language_code,
+            "headerValues": [
+                invoice_pdf_url,
+            ],
+            "fileName":
+            invoice_pdf_file_name,
             "bodyValues": [
                 customer_name,
                 str(booking_id),
@@ -99,15 +203,15 @@ def _build_interakt_template_payload(
 
 
 def _send_interakt_payload(payload: dict) -> dict:
-    base_url, api_key, _template_name, _language_code = _require_interakt_config()
-    url = f"{base_url}/v1/public/message/"
+    settings = get_settings()
+    url = f"{settings.interakt_base_url.rstrip('/')}/v1/public/message/"
     body = json.dumps(payload).encode("utf-8")
     req = request.Request(
         url,
         data=body,
         method="POST",
         headers={
-            "Authorization": f"Basic {api_key}",
+            "Authorization": f"Basic {settings.interakt_api_key}",
             "Content-Type": "application/json",
         },
     )
@@ -196,7 +300,8 @@ def _get_customer_for_actor(
                 message="Franchise context is required.",
                 error_code="MISSING_FRANCHISE_CONTEXT",
             )
-        statement = statement.where(Customer.franchise_id == actor_franchise_id)
+        statement = statement.where(
+            Customer.franchise_id == actor_franchise_id)
 
     customer = db.scalar(statement)
     if customer is None:
@@ -236,7 +341,10 @@ def _get_booking_for_actor(
             status_code=status.HTTP_404_NOT_FOUND,
             message="Booking not found for this customer.",
             error_code="BOOKING_NOT_FOUND",
-            details={"booking_id": booking_id, "customer_id": customer_id},
+            details={
+                "booking_id": booking_id,
+                "customer_id": customer_id
+            },
         )
     return booking
 
@@ -279,6 +387,7 @@ def send_booking_invoice_whatsapp_proof_for_actor(
     actor_franchise_id: int | None,
     customer_id: int,
     booking_id: int,
+    invoice_pdf: UploadFile,
 ) -> OutboundNotification:
     customer = _get_customer_for_actor(
         db,
@@ -304,10 +413,16 @@ def send_booking_invoice_whatsapp_proof_for_actor(
     if not recipient_input:
         raise AppError(
             status_code=status.HTTP_400_BAD_REQUEST,
-            message="Customer does not have a phone number for WhatsApp delivery.",
+            message=
+            "Customer does not have a phone number for WhatsApp delivery.",
             error_code="CUSTOMER_WHATSAPP_NUMBER_MISSING",
             details={"customer_id": customer.id},
         )
+    object_key, presigned_url, pdf_file_name = prepare_invoice_pdf_upload(
+        booking_id=booking.id,
+        invoice_number=invoice.invoice_number,
+        invoice_pdf=invoice_pdf,
+    )
     country_code, phone_number = _split_recipient(recipient_input)
     payload = _build_interakt_template_payload(
         country_code=country_code,
@@ -316,12 +431,12 @@ def send_booking_invoice_whatsapp_proof_for_actor(
         booking_id=booking.id,
         invoice_number=invoice.invoice_number,
         total_payable_amount=str(invoice.total_payable_amount),
+        invoice_pdf_url=presigned_url,
+        invoice_pdf_file_name=pdf_file_name,
     )
     response_payload = _send_interakt_payload(payload)
-    text = (
-        f"Interakt invoice send for customer {customer.full_name}, "
-        f"booking {booking.id}, invoice {invoice.invoice_number}."
-    )
+    text = (f"Interakt invoice send for customer {customer.full_name}, "
+            f"booking {booking.id}, invoice {invoice.invoice_number}.")
     notification = _persist_notification(
         db,
         actor=actor,
@@ -345,8 +460,15 @@ def send_booking_invoice_whatsapp_proof_for_actor(
             "booking_id": booking.id,
             "invoice_id": invoice.id,
             "invoice_number": invoice.invoice_number,
+            "s3_object_key": object_key,
+            "invoice_pdf_url": presigned_url,
             "recipient": f"{country_code}{phone_number}",
             "provider_message_id": notification.provider_message_id,
         },
     )
+    notification.provider_response = {
+        **(notification.provider_response or {}),
+        "s3_object_key": object_key,
+        "invoice_pdf_url": presigned_url,
+    }
     return notification
