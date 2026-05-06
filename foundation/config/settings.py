@@ -58,8 +58,9 @@ class Settings(BaseSettings):
         description="HS* signing key for JWT access tokens.",
     )
     jwt_algorithm: str = "HS512"
-    interakt_api_key: str | None = Field(
-        default=None,
+    interakt_api_key: str = Field(
+        ...,
+        min_length=1,
         description="Interakt API key from Developer Settings.",
     )
     interakt_base_url: str = Field(
@@ -72,14 +73,40 @@ class Settings(BaseSettings):
         min_length=1,
         description="Default country code used when stored numbers omit it.",
     )
-    interakt_template_name: str | None = Field(
-        default=None,
+    interakt_template_name: str = Field(
+        ...,
+        min_length=1,
         description="Interakt template name used for proof WhatsApp sends.",
     )
     interakt_template_language_code: str = Field(
         default="en",
         min_length=1,
         description="Language code for the Interakt template.",
+    )
+    aws_access_key_id: str = Field(
+        ...,
+        min_length=1,
+        description="AWS access key id for S3 access.",
+    )
+    aws_secret_access_key: str = Field(
+        ...,
+        min_length=1,
+        description="AWS secret access key for S3 access.",
+    )
+    aws_region: str = Field(
+        ...,
+        min_length=1,
+        description="AWS region for S3 operations.",
+    )
+    s3_bucket_name: str = Field(
+        ...,
+        min_length=1,
+        description="S3 bucket name for invoice PDF uploads.",
+    )
+    s3_presigned_url_expires_seconds: int = Field(
+        default=3600,
+        ge=60,
+        description="Presigned S3 GET URL lifetime in seconds.",
     )
 
 

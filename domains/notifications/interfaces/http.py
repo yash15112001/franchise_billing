@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.orm import Session
 from starlette import status
 
-from domains.notifications.application.service import send_booking_invoice_whatsapp_proof_for_actor
-from domains.notifications.interfaces.schemas import SendWhatsAppTextRequest
+from domains.notifications.application.service import (
+    send_booking_invoice_whatsapp_proof_for_actor, )
 from domains.users.domain.access import SEND_NOTIFICATIONS
 from foundation.database.session import get_db
 from foundation.errors import AppError
@@ -17,9 +19,12 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 @router.post("/whatsapp/messages")
 def send_whatsapp_text_message(
-    payload: SendWhatsAppTextRequest,
-    context: UserContext = Depends(require_permissions(SEND_NOTIFICATIONS)),
-    db: Session = Depends(get_db),
+        customer_id: int = Form(...),
+        booking_id: int = Form(...),
+        invoice_pdf: UploadFile = File(...),
+        context: UserContext = Depends(
+            require_permissions(SEND_NOTIFICATIONS)),
+        db: Session = Depends(get_db),
 ) -> dict:
     try:
         notification = send_booking_invoice_whatsapp_proof_for_actor(
@@ -27,8 +32,9 @@ def send_whatsapp_text_message(
             actor=context.user,
             actor_role=context.role,
             actor_franchise_id=context.franchise_id,
-            customer_id=payload.customer_id,
-            booking_id=payload.booking_id,
+            customer_id=customer_id,
+            booking_id=booking_id,
+            invoice_pdf=invoice_pdf,
         )
         db.commit()
     except AppError as exc:
