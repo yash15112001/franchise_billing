@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Index, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from foundation.database.base import Base
@@ -17,9 +17,15 @@ class CustomerType(StrEnum):
 
 class Customer(Base):
     __tablename__ = "customers"
-    __table_args__ = (UniqueConstraint("franchise_id",
-                                       "mobile_number",
-                                       name="uq_customer_mobile"), )
+    __table_args__ = (
+        Index(
+            "uq_customer_franchise_mobile_not_deleted",
+            "franchise_id",
+            "mobile_number",
+            unique=True,
+            postgresql_where=text("is_deleted IS FALSE"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     franchise_id: Mapped[int] = mapped_column(ForeignKey("franchises.id"),
@@ -57,11 +63,15 @@ class Customer(Base):
 
 class Vehicle(Base):
     __tablename__ = "vehicles"
-    __table_args__ = (UniqueConstraint(
-        "customer_id",
-        "registration_number",
-        name="uq_vehicle_customer_registration",
-    ), )
+    __table_args__ = (
+        Index(
+            "uq_vehicle_customer_registration_not_deleted",
+            "customer_id",
+            "registration_number",
+            unique=True,
+            postgresql_where=text("is_deleted IS FALSE"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"),

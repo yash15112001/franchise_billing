@@ -786,8 +786,7 @@ def list_franchise_reviews_for_actor(
             select(FranchiseReview).where(
                 FranchiseReview.franchise_id == franchise_id,
                 FranchiseReview.is_deleted.is_(False),
-            ).order_by(
-                    FranchiseReview.created_at.desc()), ).all(), )
+            ).order_by(FranchiseReview.created_at.desc()), ).all(), )
     return franchise, reviews
 
 
