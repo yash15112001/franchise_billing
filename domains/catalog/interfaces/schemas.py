@@ -57,10 +57,34 @@ class ServiceCreateRequest(BaseModel):
 
 
 class ServicePatchRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    vehicle_type: str | None = Field(default=None, min_length=1, max_length=50)
+    service_category: str | None = Field(default=None, min_length=1, max_length=60)
     base_price: Decimal | None = Field(default=None, gt=0)
     discount_percentage: Decimal | None = Field(default=None, ge=0, le=100)
     estimated_duration: time | None = None
     description: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_lowercase(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return normalize_service_name(v)
+
+    @field_validator("vehicle_type")
+    @classmethod
+    def vehicle_type_lowercase(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return normalize_service_vehicle_type(v)
+
+    @field_validator("service_category")
+    @classmethod
+    def service_category_lowercase(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return normalize_service_category(v)
 
     @field_validator("description")
     @classmethod

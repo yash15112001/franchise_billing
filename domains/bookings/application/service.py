@@ -23,6 +23,10 @@ from domains.customers.infrastructure.models import Customer, Vehicle
 from domains.franchises.application.service import get_franchise_for_actor
 from domains.invoicing.domain.enums import InvoicePaymentStatus
 from domains.invoicing.infrastructure.models import Invoice
+from domains.inventory.infrastructure.models import (
+    FranchiseInventory,
+    ServiceInventoryItemUsage,
+)
 from domains.payments.infrastructure.models import Payment
 from domains.users.domain.access import CREATE_NON_GST_INVOICE, UserRole
 from domains.users.infrastructure.models import User
@@ -34,10 +38,15 @@ _MONEY_QUANT = Decimal("0.01")
 # Standard GST rate for services (exclusive); adjust if product rules change.
 # Used as fallback if no rate is provided (not used after dynamic GST updates, but kept for legacy if needed)
 _GST_RATE = Decimal("0.18")
+_INVENTORY_QUANT = Decimal("0.0001")
 
 
 def _money(value: Decimal) -> Decimal:
     return value.quantize(_MONEY_QUANT, rounding=ROUND_HALF_UP)
+
+
+def _inventory_quantity(value: Decimal) -> Decimal:
+    return value.quantize(_INVENTORY_QUANT, rounding=ROUND_HALF_UP)
 
 
 def _invoice_number(
@@ -91,6 +100,152 @@ def _payment_status_from_paid_and_payable(
     if paid_q >= payable_q:
         return InvoicePaymentStatus.COMPLETE
     return InvoicePaymentStatus.PARTIAL
+
+
+def _booking_item_pairs(
+    db: Session,
+    *,
+    booking_id: int,
+) -> list[tuple[int, int]]:
+    items = list(
+        db.scalars(
+            select(BookingItem).where(
+                BookingItem.booking_id == booking_id,
+                BookingItem.is_deleted.is_(False),
+            )).all())
+    return [(item.service_id, item.qty) for item in items]
+
+
+def _inventory_effective_booking_pairs(
+    db: Session,
+    *,
+    booking: Booking,
+) -> list[tuple[int, int]]:
+    if booking.service_status is BookingServiceStatus.CANCELLED:
+        return []
+    return _booking_item_pairs(db, booking_id=booking.id)
+
+
+def _inventory_requirements_for_service_pairs(
+    db: Session,
+    *,
+    requested_pairs: Sequence[tuple[int, int]],
+) -> dict[int, Decimal]:
+    service_qty: dict[int, int] = {}
+    for service_id, qty in requested_pairs:
+        if qty <= 0:
+            continue
+        service_qty[service_id] = service_qty.get(service_id, 0) + qty
+
+    if not service_qty:
+        return {}
+
+    usage_rows = list(
+        db.scalars(
+            select(ServiceInventoryItemUsage).where(
+                ServiceInventoryItemUsage.service_id.in_(service_qty.keys()),
+                ServiceInventoryItemUsage.is_deleted.is_(False),
+            )).all())
+
+    requirements: dict[int, Decimal] = {}
+    for usage in usage_rows:
+        qty_multiplier = service_qty.get(usage.service_id, 0)
+        if qty_multiplier <= 0:
+            continue
+        amount = _inventory_quantity(usage.quantity_required *
+                                     Decimal(qty_multiplier))
+        requirements[usage.inventory_item_id] = _inventory_quantity(
+            requirements.get(usage.inventory_item_id, Decimal("0.0000")) +
+            amount)
+    return requirements
+
+
+def _inventory_delta_for_pair_change(
+    db: Session,
+    *,
+    before_pairs: Sequence[tuple[int, int]],
+    after_pairs: Sequence[tuple[int, int]],
+) -> dict[int, Decimal]:
+    before_requirements = _inventory_requirements_for_service_pairs(
+        db,
+        requested_pairs=before_pairs,
+    )
+    after_requirements = _inventory_requirements_for_service_pairs(
+        db,
+        requested_pairs=after_pairs,
+    )
+
+    inventory_item_ids = set(before_requirements) | set(after_requirements)
+    delta: dict[int, Decimal] = {}
+    for inventory_item_id in inventory_item_ids:
+        before_value = before_requirements.get(inventory_item_id,
+                                               Decimal("0.0000"))
+        after_value = after_requirements.get(inventory_item_id,
+                                             Decimal("0.0000"))
+        diff = _inventory_quantity(after_value - before_value)
+        if diff != Decimal("0.0000"):
+            delta[inventory_item_id] = diff
+    return delta
+
+
+def _apply_inventory_delta_for_booking(
+    db: Session,
+    *,
+    franchise_id: int,
+    delta_by_inventory_item_id: dict[int, Decimal],
+) -> None:
+    if not delta_by_inventory_item_id:
+        return
+
+    rows = list(
+        db.scalars(
+            select(FranchiseInventory).where(
+                FranchiseInventory.franchise_id == franchise_id,
+                FranchiseInventory.inventory_item_id.in_(
+                    delta_by_inventory_item_id.keys()),
+                FranchiseInventory.is_deleted.is_(False),
+            )).all())
+    stock_by_item_id = {row.inventory_item_id: row for row in rows}
+
+    missing_item_ids = sorted(
+        inventory_item_id
+        for inventory_item_id in delta_by_inventory_item_id
+        if inventory_item_id not in stock_by_item_id)
+    if missing_item_ids:
+        raise AppError(
+            status_code=status.HTTP_409_CONFLICT,
+            message=
+            "Franchise inventory records are missing for one or more required items.",
+            error_code="FRANCHISE_INVENTORY_RECORD_MISSING",
+            details={
+                "franchise_id": franchise_id,
+                "inventory_item_ids": missing_item_ids,
+            },
+        )
+
+    for inventory_item_id, delta in delta_by_inventory_item_id.items():
+        if delta <= Decimal("0.0000"):
+            continue
+        stock = stock_by_item_id[inventory_item_id]
+        new_quantity = _inventory_quantity(stock.quantity - delta)
+        if new_quantity < Decimal("0.0000"):
+            raise AppError(
+                status_code=status.HTTP_409_CONFLICT,
+                message="Insufficient inventory stock for this booking operation.",
+                error_code="INSUFFICIENT_FRANCHISE_INVENTORY",
+                details={
+                    "franchise_id": franchise_id,
+                    "inventory_item_id": inventory_item_id,
+                    "available_quantity": str(stock.quantity),
+                    "required_additional_quantity": str(delta),
+                },
+            )
+
+    for inventory_item_id, delta in delta_by_inventory_item_id.items():
+        stock = stock_by_item_id[inventory_item_id]
+        stock.quantity = _inventory_quantity(stock.quantity - delta)
+
+    db.flush()
 
 
 def _apply_invoice_totals_from_booking_items(
@@ -327,6 +482,16 @@ def create_booking_for_actor(
         ))
 
     db.flush()
+    inventory_delta = _inventory_delta_for_pair_change(
+        db,
+        before_pairs=[],
+        after_pairs=requested_pairs,
+    )
+    _apply_inventory_delta_for_booking(
+        db,
+        franchise_id=resolved_franchise_id,
+        delta_by_inventory_item_id=inventory_delta,
+    )
 
     invoice_number = _invoice_number(
         requested_at=requested_at,
@@ -768,6 +933,7 @@ def create_booking_item_for_actor(
             BookingItem.service_id == service_id,
             BookingItem.is_deleted.is_(False),
         ))
+    before_pairs = _inventory_effective_booking_pairs(db, booking=booking)
     if existing is not None:
         existing.qty = qty
         item = existing
@@ -776,6 +942,17 @@ def create_booking_item_for_actor(
         booking.items.append(item)
 
     db.flush()
+    after_pairs = _inventory_effective_booking_pairs(db, booking=booking)
+    inventory_delta = _inventory_delta_for_pair_change(
+        db,
+        before_pairs=before_pairs,
+        after_pairs=after_pairs,
+    )
+    _apply_inventory_delta_for_booking(
+        db,
+        franchise_id=booking.franchise_id,
+        delta_by_inventory_item_id=inventory_delta,
+    )
     _apply_invoice_totals_from_booking_items(db, booking, invoice)
     db.flush()
     db.refresh(booking)
@@ -852,9 +1029,21 @@ def put_booking_item_for_actor(
         )
 
     if qty == 0:
+        before_pairs = _inventory_effective_booking_pairs(db, booking=booking)
         removed_id = row.id
         db.delete(row)
         db.flush()
+        after_pairs = _inventory_effective_booking_pairs(db, booking=booking)
+        inventory_delta = _inventory_delta_for_pair_change(
+            db,
+            before_pairs=before_pairs,
+            after_pairs=after_pairs,
+        )
+        _apply_inventory_delta_for_booking(
+            db,
+            franchise_id=booking.franchise_id,
+            delta_by_inventory_item_id=inventory_delta,
+        )
         _apply_invoice_totals_from_booking_items(db, booking, invoice)
         db.flush()
         db.refresh(booking)
@@ -873,8 +1062,20 @@ def put_booking_item_for_actor(
         )
         return None, booking, removed_id
 
+    before_pairs = _inventory_effective_booking_pairs(db, booking=booking)
     row.qty = qty
     db.flush()
+    after_pairs = _inventory_effective_booking_pairs(db, booking=booking)
+    inventory_delta = _inventory_delta_for_pair_change(
+        db,
+        before_pairs=before_pairs,
+        after_pairs=after_pairs,
+    )
+    _apply_inventory_delta_for_booking(
+        db,
+        franchise_id=booking.franchise_id,
+        delta_by_inventory_item_id=inventory_delta,
+    )
     _apply_invoice_totals_from_booking_items(db, booking, invoice)
     db.flush()
     db.refresh(booking)
@@ -989,9 +1190,11 @@ def replace_booking_items_for_actor(
                 },
             )
 
+    before_pairs = _inventory_effective_booking_pairs(db, booking=booking)
     existing_by_service_id = {
         booking_item.service_id: booking_item
         for booking_item in list(booking.items)
+        if not booking_item.is_deleted
     }
     for service_id in list(existing_by_service_id.keys()):
         if service_id not in new_map:
@@ -1010,6 +1213,17 @@ def replace_booking_items_for_actor(
             booking.items.append(BookingItem(service_id=service_id, qty=qty))
 
     db.flush()
+    after_pairs = _inventory_effective_booking_pairs(db, booking=booking)
+    inventory_delta = _inventory_delta_for_pair_change(
+        db,
+        before_pairs=before_pairs,
+        after_pairs=after_pairs,
+    )
+    _apply_inventory_delta_for_booking(
+        db,
+        franchise_id=booking.franchise_id,
+        delta_by_inventory_item_id=inventory_delta,
+    )
 
     _apply_invoice_totals_from_booking_items(db, booking, invoice)
 
@@ -1067,6 +1281,33 @@ def patch_booking_for_actor(
     booking = bookings[0]
 
     if service_status is not None:
+        if (booking.service_status is not BookingServiceStatus.CANCELLED
+                and service_status is BookingServiceStatus.CANCELLED):
+            before_pairs = _booking_item_pairs(db, booking_id=booking.id)
+            inventory_delta = _inventory_delta_for_pair_change(
+                db,
+                before_pairs=before_pairs,
+                after_pairs=[],
+            )
+            _apply_inventory_delta_for_booking(
+                db,
+                franchise_id=booking.franchise_id,
+                delta_by_inventory_item_id=inventory_delta,
+            )
+        elif (booking.service_status is BookingServiceStatus.CANCELLED
+              and service_status is not BookingServiceStatus.CANCELLED):
+            after_pairs = _booking_item_pairs(db, booking_id=booking.id)
+            inventory_delta = _inventory_delta_for_pair_change(
+                db,
+                before_pairs=[],
+                after_pairs=after_pairs,
+            )
+            _apply_inventory_delta_for_booking(
+                db,
+                franchise_id=booking.franchise_id,
+                delta_by_inventory_item_id=inventory_delta,
+            )
+    if service_status is not None:
         booking.service_status = service_status
     if notes is not None:
         booking.notes = notes
@@ -1111,6 +1352,18 @@ def soft_delete_booking_for_actor(
         )
     booking = bookings[0]
 
+    if booking.service_status is not BookingServiceStatus.CANCELLED:
+        before_pairs = _booking_item_pairs(db, booking_id=booking.id)
+        inventory_delta = _inventory_delta_for_pair_change(
+            db,
+            before_pairs=before_pairs,
+            after_pairs=[],
+        )
+        _apply_inventory_delta_for_booking(
+            db,
+            franchise_id=booking.franchise_id,
+            delta_by_inventory_item_id=inventory_delta,
+        )
     _soft_delete_booking_tree(db, booking=booking)
 
     write_audit_log(

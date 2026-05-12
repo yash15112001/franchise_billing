@@ -167,6 +167,37 @@ def _split_recipient(phone_number: str) -> tuple[str, str]:
 
 def _build_interakt_template_payload(
     *,
+    template_name: str,
+    country_code: str,
+    phone_number: str,
+    callback_data: str,
+    body_values: list[str],
+    invoice_pdf_url: str,
+    invoice_pdf_file_name: str,
+) -> dict:
+    settings = get_settings()
+    return {
+        "countryCode": country_code,
+        "phoneNumber": phone_number,
+        "type": "Template",
+        "callbackData": callback_data,
+        "template": {
+            "name":
+            template_name,
+            "languageCode":
+            settings.interakt_template_language_code,
+            "headerValues": [
+                invoice_pdf_url,
+            ],
+            "fileName":
+            invoice_pdf_file_name,
+            "bodyValues": body_values,
+        },
+    }
+
+
+def _build_booking_invoice_proof_payload(
+    *,
     country_code: str,
     phone_number: str,
     customer_name: str,
@@ -177,29 +208,53 @@ def _build_interakt_template_payload(
     invoice_pdf_file_name: str,
 ) -> dict:
     settings = get_settings()
-    return {
-        "countryCode": country_code,
-        "phoneNumber": phone_number,
-        "type": "Template",
-        "callbackData": f"booking:{booking_id}|invoice:{invoice_number}",
-        "template": {
-            "name":
-            settings.interakt_template_name,
-            "languageCode":
-            settings.interakt_template_language_code,
-            "headerValues": [
-                invoice_pdf_url,
-            ],
-            "fileName":
-            invoice_pdf_file_name,
-            "bodyValues": [
-                customer_name,
-                str(booking_id),
-                invoice_number,
-                total_payable_amount,
-            ],
-        },
-    }
+    return _build_interakt_template_payload(
+        template_name=settings.interakt_template_name,
+        country_code=country_code,
+        phone_number=phone_number,
+        callback_data=f"booking:{booking_id}|invoice:{invoice_number}|kind:proof",
+        body_values=[
+            customer_name,
+            str(booking_id),
+            invoice_number,
+            total_payable_amount,
+        ],
+        invoice_pdf_url=invoice_pdf_url,
+        invoice_pdf_file_name=invoice_pdf_file_name,
+    )
+
+
+def _build_payment_reminder_payload(
+    *,
+    country_code: str,
+    phone_number: str,
+    customer_name: str,
+    booking_id: int,
+    invoice_number: str,
+    total_payable_amount: str,
+    total_paid_amount: str,
+    total_remaining_amount: str,
+    invoice_pdf_url: str,
+    invoice_pdf_file_name: str,
+) -> dict:
+    settings = get_settings()
+    return _build_interakt_template_payload(
+        template_name=settings.interakt_payment_reminder_template_name,
+        country_code=country_code,
+        phone_number=phone_number,
+        callback_data=
+        f"booking:{booking_id}|invoice:{invoice_number}|kind:payment_reminder",
+        body_values=[
+            customer_name,
+            str(booking_id),
+            invoice_number,
+            total_payable_amount,
+            total_paid_amount,
+            total_remaining_amount,
+        ],
+        invoice_pdf_url=invoice_pdf_url,
+        invoice_pdf_file_name=invoice_pdf_file_name,
+    )
 
 
 def _send_interakt_payload(payload: dict) -> dict:
@@ -424,7 +479,7 @@ def send_booking_invoice_whatsapp_proof_for_actor(
         invoice_pdf=invoice_pdf,
     )
     country_code, phone_number = _split_recipient(recipient_input)
-    payload = _build_interakt_template_payload(
+    payload = _build_booking_invoice_proof_payload(
         country_code=country_code,
         phone_number=phone_number,
         customer_name=customer.full_name,
@@ -460,6 +515,123 @@ def send_booking_invoice_whatsapp_proof_for_actor(
             "booking_id": booking.id,
             "invoice_id": invoice.id,
             "invoice_number": invoice.invoice_number,
+            "s3_object_key": object_key,
+            "invoice_pdf_url": presigned_url,
+            "recipient": f"{country_code}{phone_number}",
+            "provider_message_id": notification.provider_message_id,
+        },
+    )
+    notification.provider_response = {
+        **(notification.provider_response or {}),
+        "s3_object_key": object_key,
+        "invoice_pdf_url": presigned_url,
+    }
+    return notification
+
+
+def send_payment_reminder_whatsapp_for_actor(
+    db: Session,
+    *,
+    actor: User,
+    actor_role: UserRole,
+    actor_franchise_id: int | None,
+    customer_id: int,
+    booking_id: int,
+    invoice_pdf: UploadFile,
+) -> OutboundNotification:
+    customer = _get_customer_for_actor(
+        db,
+        actor=actor,
+        actor_role=actor_role,
+        actor_franchise_id=actor_franchise_id,
+        customer_id=customer_id,
+    )
+    booking = _get_booking_for_actor(
+        db,
+        actor_role=actor_role,
+        actor_franchise_id=actor_franchise_id,
+        customer_id=customer.id,
+        booking_id=booking_id,
+    )
+    invoice = _get_invoice_for_booking_for_actor(
+        db,
+        actor_role=actor_role,
+        actor_franchise_id=actor_franchise_id,
+        booking=booking,
+    )
+
+    total_remaining_amount = invoice.total_payable_amount - invoice.total_paid_amount
+    if total_remaining_amount <= 0:
+        raise AppError(
+            status_code=status.HTTP_409_CONFLICT,
+            message="Payment reminder is not applicable because payment is already complete.",
+            error_code="PAYMENT_REMINDER_NOT_APPLICABLE",
+            details={
+                "booking_id": booking.id,
+                "invoice_id": invoice.id,
+                "invoice_number": invoice.invoice_number,
+                "payment_status": invoice.payment_status.value,
+            },
+        )
+
+    recipient_input = customer.whatsapp_number or customer.mobile_number
+    if not recipient_input:
+        raise AppError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            message=
+            "Customer does not have a phone number for WhatsApp delivery.",
+            error_code="CUSTOMER_WHATSAPP_NUMBER_MISSING",
+            details={"customer_id": customer.id},
+        )
+    object_key, presigned_url, pdf_file_name = prepare_invoice_pdf_upload(
+        booking_id=booking.id,
+        invoice_number=invoice.invoice_number,
+        invoice_pdf=invoice_pdf,
+    )
+    country_code, phone_number = _split_recipient(recipient_input)
+    payload = _build_payment_reminder_payload(
+        country_code=country_code,
+        phone_number=phone_number,
+        customer_name=customer.full_name,
+        booking_id=booking.id,
+        invoice_number=invoice.invoice_number,
+        total_payable_amount=str(invoice.total_payable_amount),
+        total_paid_amount=str(invoice.total_paid_amount),
+        total_remaining_amount=str(total_remaining_amount),
+        invoice_pdf_url=presigned_url,
+        invoice_pdf_file_name=pdf_file_name,
+    )
+    response_payload = _send_interakt_payload(payload)
+    text = (
+        f"Interakt payment reminder sent for customer {customer.full_name}, "
+        f"booking {booking.id}, invoice {invoice.invoice_number}, pending {total_remaining_amount}."
+    )
+    notification = _persist_notification(
+        db,
+        actor=actor,
+        franchise_id=customer.franchise_id,
+        customer_id=customer.id,
+        invoice_id=invoice.id,
+        recipient=f"{country_code}{phone_number}",
+        text=text,
+        response_payload=response_payload,
+    )
+    write_audit_log(
+        db,
+        action="notification.interakt_payment_reminder_sent",
+        entity_name="outbound_notifications",
+        entity_id=str(notification.id),
+        actor_user_id=actor.id,
+        franchise_id=notification.franchise_id,
+        payload={
+            "channel": notification.channel.value,
+            "customer_id": customer.id,
+            "booking_id": booking.id,
+            "invoice_id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "total_payable_amount": str(invoice.total_payable_amount),
+            "total_paid_amount": str(invoice.total_paid_amount),
+            "total_remaining_amount": str(total_remaining_amount),
             "s3_object_key": object_key,
             "invoice_pdf_url": presigned_url,
             "recipient": f"{country_code}{phone_number}",

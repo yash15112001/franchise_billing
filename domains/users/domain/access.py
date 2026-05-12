@@ -43,6 +43,23 @@ DEACTIVATE_SERVICES = "service:deactivate"
 VIEW_SERVICE_POPULARITY = "service:popularity_view"
 VIEW_SERVICE_ANALYTICS = "service:analytics_view"
 
+# Inventory item
+VIEW_INVENTORY_ITEMS = "inventory_item:view"
+CREATE_INVENTORY_ITEMS = "inventory_item:create"
+UPDATE_INVENTORY_ITEMS = "inventory_item:update"
+DELETE_INVENTORY_ITEMS = "inventory_item:delete"
+
+# Service inventory item usage
+VIEW_SERVICE_INVENTORY_ITEM_USAGES = "service_inventory_item_usage:view"
+CREATE_SERVICE_INVENTORY_ITEM_USAGES = "service_inventory_item_usage:create"
+UPDATE_SERVICE_INVENTORY_ITEM_USAGES = "service_inventory_item_usage:update"
+DELETE_SERVICE_INVENTORY_ITEM_USAGES = "service_inventory_item_usage:delete"
+
+# Franchise inventory
+VIEW_FRANCHISE_INVENTORY = "franchise_inventory:view"
+ADD_FRANCHISE_INVENTORY_STOCK = "franchise_inventory:add_stock"
+SET_FRANCHISE_INVENTORY_STOCK = "franchise_inventory:set_stock"
+
 # User
 VIEW_USERS = "user:view"
 VIEW_USER_PERMISSIONS = "user:view_permissions"
@@ -144,6 +161,20 @@ ALL_PERMISSION_CODES = {
     DEACTIVATE_SERVICES,
     VIEW_SERVICE_POPULARITY,
     VIEW_SERVICE_ANALYTICS,
+    # Inventory item
+    VIEW_INVENTORY_ITEMS,
+    CREATE_INVENTORY_ITEMS,
+    UPDATE_INVENTORY_ITEMS,
+    DELETE_INVENTORY_ITEMS,
+    # Service inventory item usage
+    VIEW_SERVICE_INVENTORY_ITEM_USAGES,
+    CREATE_SERVICE_INVENTORY_ITEM_USAGES,
+    UPDATE_SERVICE_INVENTORY_ITEM_USAGES,
+    DELETE_SERVICE_INVENTORY_ITEM_USAGES,
+    # Franchise inventory
+    VIEW_FRANCHISE_INVENTORY,
+    ADD_FRANCHISE_INVENTORY_STOCK,
+    SET_FRANCHISE_INVENTORY_STOCK,
     # User
     VIEW_USERS,
     VIEW_USER_PERMISSIONS,
@@ -251,6 +282,12 @@ DEFAULT_ROLE_PERMISSIONS = {
         VIEW_SERVICES,
         VIEW_SERVICE_POPULARITY,
         VIEW_SERVICE_ANALYTICS,
+        # Inventory
+        VIEW_INVENTORY_ITEMS,
+        VIEW_SERVICE_INVENTORY_ITEM_USAGES,
+        VIEW_FRANCHISE_INVENTORY,
+        ADD_FRANCHISE_INVENTORY_STOCK,
+        SET_FRANCHISE_INVENTORY_STOCK,
         # User
         VIEW_USERS,
         CREATE_USERS,
@@ -299,6 +336,10 @@ DEFAULT_ROLE_PERMISSIONS = {
         VIEW_SERVICES,
         VIEW_SERVICE_POPULARITY,
         VIEW_SERVICE_ANALYTICS,
+        # Inventory
+        VIEW_INVENTORY_ITEMS,
+        VIEW_SERVICE_INVENTORY_ITEM_USAGES,
+        VIEW_FRANCHISE_INVENTORY,
         # User
         VIEW_USERS,
         UPDATE_USER_PROFILE,

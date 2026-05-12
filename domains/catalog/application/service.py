@@ -9,6 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from domains.audit.application.service import write_audit_log
+from domains.bookings.domain.enums import BookingServiceStatus
+from domains.bookings.infrastructure.models import Booking, BookingItem
 from domains.catalog.infrastructure.models import Service
 from domains.users.domain.access import UserRole
 from foundation.errors import AppError
@@ -162,6 +164,84 @@ def get_active_service_by_id(db: Session, *,
     return rows[0] if rows else None
 
 
+def _get_service_or_404(db: Session, *, service_id: int) -> Service:
+    service = get_service_by_id(db, service_id=service_id)
+    if service is None:
+        raise AppError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message="Service not found.",
+            error_code="SERVICE_NOT_FOUND",
+            details={"service_id": service_id},
+        )
+    return service
+
+
+def _ensure_service_pricing_mutable(
+    db: Session,
+    *,
+    service_id: int,
+) -> None:
+    active_booking_item_ids = list(
+        db.scalars(
+            select(BookingItem.id).join(
+                Booking,
+                BookingItem.booking_id == Booking.id,
+            ).where(
+                BookingItem.service_id == service_id,
+                BookingItem.is_deleted.is_(False),
+                Booking.is_deleted.is_(False),
+                Booking.service_status.not_in((
+                    BookingServiceStatus.COMPLETE,
+                    BookingServiceStatus.CANCELLED,
+                )),
+            )).all())
+    if active_booking_item_ids:
+        raise AppError(
+            status_code=status.HTTP_409_CONFLICT,
+            message=("Pricing-related changes are not allowed while active "
+                     "bookings are using this service."),
+            error_code="SERVICE_PRICING_IN_USE",
+            details={
+                "service_id": service_id,
+                "active_booking_item_count": len(active_booking_item_ids),
+                "active_booking_item_ids": active_booking_item_ids,
+            },
+        )
+
+
+def _ensure_service_deactivatable(
+    db: Session,
+    *,
+    service_id: int,
+) -> None:
+    active_booking_item_ids = list(
+        db.scalars(
+            select(BookingItem.id).join(
+                Booking,
+                BookingItem.booking_id == Booking.id,
+            ).where(
+                BookingItem.service_id == service_id,
+                BookingItem.is_deleted.is_(False),
+                Booking.is_deleted.is_(False),
+                Booking.service_status.not_in((
+                    BookingServiceStatus.COMPLETE,
+                    BookingServiceStatus.CANCELLED,
+                )),
+            )).all())
+    if active_booking_item_ids:
+        raise AppError(
+            status_code=status.HTTP_409_CONFLICT,
+            message=("Service cannot be deactivated while active bookings are "
+                     "using it."),
+            error_code="SERVICE_IN_USE",
+            details={
+                "service_id": service_id,
+                "active_booking_item_count": len(active_booking_item_ids),
+                "active_booking_item_ids": active_booking_item_ids,
+            },
+        )
+
+
 def list_services_by_popularity(
     db: Session,
     *,
@@ -243,17 +323,78 @@ def create_service_for_actor(
 
 
 def patch_service(
-    _db: Session,
+    db: Session,
     *,
-    _service_id: int,
-    _base_price: Decimal | None = None,
-    _discount_percentage: Decimal | None = None,
-    _estimated_duration: time | None = None,
-    _description: str | None = None,
-    _actor_user_id: int,
+    service_id: int,
+    name: str | None = None,
+    vehicle_type: str | None = None,
+    service_category: str | None = None,
+    base_price: Decimal | None = None,
+    discount_percentage: Decimal | None = None,
+    estimated_duration: time | None = None,
+    description: str | None = None,
+    actor_user_id: int,
 ) -> Service:
-    """Planned for post-v1; contract notes deactivate + recreate instead."""
-    raise NotImplementedError
+    service = _get_service_or_404(db, service_id=service_id)
+
+    forbidden_identity_fields = {
+        key: value
+        for key, value in {
+            "name": name,
+            "vehicle_type": vehicle_type,
+            "service_category": service_category,
+        }.items() if value is not None
+    }
+    if forbidden_identity_fields:
+        raise AppError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            message=("Updating name, vehicle_type, or service_category is not "
+                     "allowed. Deactivate the current service and create a new "
+                     "one for consistency."),
+            error_code="IMMUTABLE_SERVICE_FIELDS",
+            details={
+                "service_id": service_id,
+                "fields": sorted(forbidden_identity_fields.keys()),
+            },
+        )
+
+    if (base_price is None and discount_percentage is None
+            and estimated_duration is None and description is None):
+        raise AppError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            message="At least one field must be provided to update.",
+            error_code="EMPTY_SERVICE_PATCH",
+            details={"service_id": service_id},
+        )
+
+    if base_price is not None or discount_percentage is not None:
+        _ensure_service_pricing_mutable(db, service_id=service_id)
+
+    if base_price is not None:
+        service.base_price = _money(base_price)
+    if discount_percentage is not None:
+        service.discount_percentage = _money(discount_percentage)
+    if estimated_duration is not None:
+        service.estimated_duration = estimated_duration
+    if description is not None:
+        service.description = description
+
+    db.flush()
+    write_audit_log(
+        db,
+        action="catalog.service.update",
+        entity_name="services",
+        entity_id=str(service.id),
+        actor_user_id=actor_user_id,
+        franchise_id=None,
+        payload={
+            "base_price": str(service.base_price),
+            "discount_percentage": str(service.discount_percentage),
+            "estimated_duration": service.estimated_duration.isoformat(),
+            "description": service.description,
+        },
+    )
+    return service
 
 
 def serialize_service_status_toggle_response(service: Service) -> dict:
@@ -292,6 +433,9 @@ def set_service_status_for_actor(
 
     if service.is_active is is_active:
         return service
+
+    if not is_active:
+        _ensure_service_deactivatable(db, service_id=service.id)
 
     name = service.name
     vehicle_type = service.vehicle_type
