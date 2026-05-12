@@ -9,6 +9,7 @@ from domains.catalog.application.service import (
     get_active_service_by_id,
     list_active_services,
     list_all_services_including_inactive,
+    patch_service as patch_service_for_actor,
     serialize_service_status_toggle_response,
     serialize_service_row,
     set_service_status_for_actor,
@@ -170,20 +171,40 @@ def get_service(
         )
 
 
-# TODO : implement patch on service as deactive old nd create new service.
-@router.patch("/{service_id}", include_in_schema=False)
+@router.patch("/{service_id}")
 def patch_service(
-        _service_id: int,
-        _payload: ServicePatchRequest,
-        _context: UserContext = Depends(require_permissions(CREATE_SERVICES)),
-        _db: Session = Depends(get_db),
+        service_id: int,
+        payload: ServicePatchRequest,
+        context: UserContext = Depends(require_permissions(CREATE_SERVICES)),
+        db: Session = Depends(get_db),
 ) -> dict:
-    """Not implemented — use deactivate + create. Returns 501 `NOT_IMPLEMENTED`. Hidden from OpenAPI."""
-    raise AppError(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        message="This endpoint is not implemented yet.",
-        error_code="NOT_IMPLEMENTED",
-    )
+    """Patch mutable service fields; identity-like fields must be replaced via deactivate + create."""
+    try:
+        service = patch_service_for_actor(
+            db,
+            service_id=service_id,
+            name=payload.name,
+            vehicle_type=payload.vehicle_type,
+            service_category=payload.service_category,
+            base_price=payload.base_price,
+            discount_percentage=payload.discount_percentage,
+            estimated_duration=payload.estimated_duration,
+            description=payload.description,
+            actor_user_id=context.user.id,
+        )
+        db.commit()
+    except AppError as exc:
+        db.rollback()
+        return error_response(exc)
+    except Exception:
+        db.rollback()
+        return internal_error_response()
+    else:
+        return success_response(
+            message="Service updated successfully.",
+            data=serialize_service_row(service),
+            status_code=status.HTTP_200_OK,
+        )
 
 
 @router.patch("/{service_id}/deactivate")

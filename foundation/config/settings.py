@@ -78,6 +78,10 @@ class Settings(BaseSettings):
         min_length=1,
         description="Interakt template name used for proof WhatsApp sends.",
     )
+    interakt_payment_reminder_template_name: str | None = Field(
+        default=None,
+        description="Interakt template name used for payment reminder WhatsApp sends.",
+    )
     interakt_template_language_code: str = Field(
         default="en",
         min_length=1,

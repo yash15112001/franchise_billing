@@ -13,6 +13,8 @@ Franchise
     - status : Enum_str
     - gst_number : str : case_insensitive : store in uppercase
     - pan_number : str : case_insensitive : store in uppercase
+    - cgst : float
+    - sgst : float
     - monthly_target : float : opt
     - is_deleted : boolean
     - location_url : str : optional : case_sensitive
@@ -130,6 +132,47 @@ Service
 
 ------------------------------------------------------------------------------------------------
 
+InventoryItem
+
+    - id : number
+    - name : str : case_insensitive
+    - description : text : optional : case_sensitive
+    - is_deleted : boolean
+    - created_at : timestamp
+    - updated_at : timestamp
+
+    - unique(name) when is_deleted = False
+
+------------------------------------------------------------------------------------------------
+
+ServiceInventoryItemUsage
+
+    - id : number
+    - inventory_item_id : number : fKey
+    - service_id : number : fKey
+    - quantity_required : decimal(12,4)
+    - is_deleted : boolean
+    - created_at : timestamp
+    - updated_at : timestamp
+
+    - unique(service_id, inventory_item_id) when is_deleted = False
+
+------------------------------------------------------------------------------------------------
+
+FranchiseInventory
+
+    - id : number
+    - franchise_id : number : fKey
+    - inventory_item_id : number : fKey
+    - quantity : decimal(12,4)
+    - is_deleted : boolean
+    - created_at : timestamp
+    - updated_at : timestamp
+
+    - unique(franchise_id, inventory_item_id) when is_deleted = False
+
+------------------------------------------------------------------------------------------------
+
 Customer
 
     - id : number
@@ -183,6 +226,7 @@ Booking
     - service_status : Enum_str
     - created_by : number : fKey : User.id
     - notes : text : optional : case_sensitive
+    - is_deleted : boolean
     - created_at : timestamp
     - updated_at : timestamp
 
@@ -203,6 +247,7 @@ BookingItem
     - booking_id : number : fKey
     - service_id : number : fKey
     - qty : number
+    - is_deleted : boolean
     - created_at : timestamp
     - updated_at : timestamp
 

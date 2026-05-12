@@ -25,6 +25,10 @@ from domains.franchises.infrastructure.models import (
     FranchiseTiming,
     new_franchise_code_placeholder,
 )
+from domains.inventory.infrastructure.models import (
+    FranchiseInventory,
+    InventoryItem,
+)
 from domains.users.application.service import soft_delete_user_for_actor
 from domains.users.domain.access import UserRole
 from domains.users.infrastructure.models import User
@@ -211,6 +215,19 @@ def create_franchise_for_actor(
             is_closed=True,
         )
         db.add(timing)
+
+    inventory_item_ids = db.scalars(
+        select(InventoryItem.id).where(
+            InventoryItem.is_deleted.is_(False)).order_by(
+                InventoryItem.id.asc())).all()
+    for inventory_item_id in inventory_item_ids:
+        db.add(
+            FranchiseInventory(
+                franchise_id=franchise.id,
+                inventory_item_id=inventory_item_id,
+                quantity=Decimal("0.0000"),
+                is_deleted=False,
+            ))
     db.flush()
 
     write_audit_log(
@@ -1042,6 +1059,15 @@ def soft_delete_franchise_for_actor(
     for policy in commission_policies:
         policy.is_deleted = True
         policy.is_active = False
+
+    inventory_rows = list(
+        db.scalars(
+            select(FranchiseInventory).where(
+                FranchiseInventory.franchise_id == franchise.id,
+                FranchiseInventory.is_deleted.is_(False),
+            )).all())
+    for inventory_row in inventory_rows:
+        inventory_row.is_deleted = True
 
     if franchise.is_deleted is False:
         franchise.is_deleted = True

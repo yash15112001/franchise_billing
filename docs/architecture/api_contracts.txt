@@ -40,7 +40,7 @@ Franchise
         - can deactivate franchise with status : active / pending_approval
         - the users related to deactivated franchise can no longer access the system
         - request_body : {}
-        - returns json : {id, status, updated_at }
+        - returns json : { id, status, updated_at }
 
     delete /franchises/{franchise_id}
         - only main_admin can delete a franchise
@@ -155,6 +155,83 @@ Service
         - request_body : {}
         - activates the service
         - return json : { id, is_active, updated_at }
+
+======================================================================================================================================================================================================================================================================================================
+
+Inventory Item
+
+    get /inventory-items
+        - all type of users can access this information
+        - supports optional filters : search, name
+        - returns : id, name, description, created_at, updated_at
+    get /inventory-items/{inventory_item_id}
+        - same as above api, get specific inventory item info by id
+    post /inventory-items
+        - only be accessible from main_admin
+        - request_body : { name, description? }
+        - creation side effect : creates franchise_inventory records for all non deleted franchises with quantity = 0
+        - returns json : { id, name, description, created_at, updated_at }
+    patch /inventory-items/{inventory_item_id}
+        - only be accessible from main_admin
+        - request_body : { name?, description? }
+        - returns json : { id, updated_at }
+    delete /inventory-items/{inventory_item_id}
+        - only main_admin can do this
+        - soft deletes the inventory item only if there are no active service inventory item usage mappings for this inventory item
+        - if active mappings exist, delete must fail with conflict since the inventory item is still in use by service definitions
+        - side effect on successful delete : soft deletes related franchise inventory rows
+        - returns json : { id, is_deleted, updated_at }
+
+======================================================================================================================================================================================================================================================================================================
+
+Service Inventory Item Usage
+
+    get /service-inventory-item-usages
+        - all type of users can access this information
+        - supports optional filters : service_id, inventory_item_id
+        - returns list of : id, inventory_item_id, service_id, quantity_required, created_at, updated_at
+    get /service-inventory-item-usages/{service_inventory_item_usage_id}
+        - same as above api, get specific service inventory item usage by id
+    post /service-inventory-item-usages
+        - only be accessible by main_admin
+        - request_body : { service_id, inventory_item_id, quantity_required }
+        - creates the mapping of what inventory item is required to serve this service with required quantity
+        - returns json : { id, service_id, inventory_item_id, quantity_required, created_at, updated_at}
+    patch /service-inventory-item-usages/{service_inventory_item_usage_id}
+        - only be accessible by main_admin
+        - request_body : { quantity_required }
+        - quantity_required can not be set to 0, use delete endpoint instead
+        - returns json : { id, updated_at }
+    delete /service-inventory-item-usages/{service_inventory_item_usage_id}
+        - only be accessible by main_admin
+        - soft deletes mapping
+        - returns json : { id, is_deleted, updated_at }
+
+======================================================================================================================================================================================================================================================================================================
+
+Franchise Inventory
+
+    get /franchise-inventory
+        - based on role of user (will come from the server context or from headers), user will be able to see inventory info of self franchise if that user is not main_admin, main_admin can see inventory of all franchise
+        - supports optional filters : franchise_id, inventory_item_id
+        - returns : id, franchise_id, inventory_item_id, quantity, created_at, updated_at
+    get /franchise-inventory/{franchise_inventory_id}
+        - same as above, sends a specific record info
+    post /franchise-inventory
+        - actually, there is no requirement for this api, since the records of franchise_inventory will be created as side effect when franchise is created or when inventory item is created
+    patch /franchise-inventory/{franchise_inventory_id}/add-stock
+        - can only be done by main_admin or the franchise_admin if the franchise_admin is trying to add stock to its own franchise
+        - request_body : { quantity_to_be_added }
+        - quantity_to_be_added must be positive
+        - returns json : { id, franchise_id, inventory_item_id, old_quantity, quantity_added, new_quantity, updated_at }
+    patch /franchise-inventory/{franchise_inventory_id}/set-stock
+        - can only be done by main_admin or the franchise_admin if the franchise_admin is trying to correct stock of its own franchise
+        - manual correction endpoint, directly sets the quantity to provided value
+        - request_body : { quantity }
+        - returns json : { id, franchise_id, inventory_item_id, old_quantity, new_quantity, updated_at }
+    delete /franchise-inventory/{franchise_inventory_id}
+        - can not be deleted via dedicated endpoint
+        - only be deleted as part of cascade soft deletion from upper level modules, like when franchise is deleted or inventory item is deleted
 
 ======================================================================================================================================================================================================================================================================================================
 
