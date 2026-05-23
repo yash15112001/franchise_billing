@@ -286,6 +286,7 @@ def _whatsapp_meta_messages_url() -> str:
 
 
 def _raise_whatsapp_meta_provider_error(details: dict) -> None:
+    logger.warning("WhatsApp Meta API rejected message request: %s", details)
     raise AppError(
         status_code=status.HTTP_502_BAD_GATEWAY,
         message="WhatsApp Meta API rejected the message request.",
@@ -316,6 +317,7 @@ def _send_whatsapp_meta_payload(payload: dict) -> dict:
             details = json.loads(raw)
         except json.JSONDecodeError:
             details = {"raw_response": raw}
+        details["provider_status_code"] = exc.code
         _raise_whatsapp_meta_provider_error(details)
     except error.URLError as exc:
         raise AppError(
