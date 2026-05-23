@@ -19,6 +19,7 @@ from foundation.web.responses import error_response, internal_error_response, su
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
+@router.post("/whatsapp/messages", include_in_schema=False)
 @router.post("/whatsapp/invoices")
 def send_whatsapp_text_message(
         customer_id: int = Form(...),
