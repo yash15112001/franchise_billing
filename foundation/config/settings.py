@@ -58,34 +58,54 @@ class Settings(BaseSettings):
         description="HS* signing key for JWT access tokens.",
     )
     jwt_algorithm: str = "HS512"
-    interakt_api_key: str = Field(
+    whatsapp_meta_access_token: str = Field(
         ...,
         min_length=1,
-        description="Interakt API key from Developer Settings.",
+        description="Access token for the WhatsApp Meta API proxy.",
     )
-    interakt_base_url: str = Field(
-        default="https://api.interakt.ai",
+    whatsapp_meta_base_url: str = Field(
+        default="https://crmapi.lifeweblink.com/api/meta",
         min_length=1,
-        description="Base URL for Interakt public API requests.",
+        description="Base URL for WhatsApp Meta API proxy requests.",
     )
-    interakt_default_country_code: str = Field(
+    whatsapp_meta_api_version: str = Field(
+        default="v19.0",
+        min_length=1,
+        description="Meta Graph API version used by the WhatsApp API proxy.",
+    )
+    whatsapp_meta_waba_id: str = Field(
+        ...,
+        min_length=1,
+        description="WhatsApp Business Account ID.",
+    )
+    whatsapp_meta_phone_number_id: str = Field(
+        ...,
+        min_length=1,
+        description="WhatsApp sender phone number ID.",
+    )
+    whatsapp_meta_business_id: str = Field(
+        ...,
+        min_length=1,
+        description="Meta Business ID.",
+    )
+    whatsapp_default_country_code: str = Field(
         default="+91",
         min_length=1,
         description="Default country code used when stored numbers omit it.",
     )
-    interakt_template_name: str = Field(
+    whatsapp_template_name: str = Field(
         ...,
         min_length=1,
-        description="Interakt template name used for proof WhatsApp sends.",
+        description="Approved Meta WhatsApp template name used for proof sends.",
     )
-    interakt_payment_reminder_template_name: str | None = Field(
+    whatsapp_payment_reminder_template_name: str | None = Field(
         default=None,
-        description="Interakt template name used for payment reminder WhatsApp sends.",
+        description="Approved Meta WhatsApp template name used for payment reminder sends.",
     )
-    interakt_template_language_code: str = Field(
+    whatsapp_template_language_code: str = Field(
         default="en",
         min_length=1,
-        description="Language code for the Interakt template.",
+        description="Language code for the approved Meta WhatsApp templates.",
     )
     aws_access_key_id: str = Field(
         ...,

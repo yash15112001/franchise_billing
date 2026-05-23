@@ -148,7 +148,7 @@ def _split_recipient(phone_number: str) -> tuple[str, str]:
             message="Phone number is required.",
             error_code="INVALID_WHATSAPP_PHONE_NUMBER",
         )
-    default_country_code = settings.interakt_default_country_code
+    default_country_code = settings.whatsapp_default_country_code
     country_digits = "".join(ch for ch in default_country_code if ch.isdigit())
     if len(digits) == 10:
         return default_country_code, digits
@@ -165,33 +165,51 @@ def _split_recipient(phone_number: str) -> tuple[str, str]:
     return default_country_code, digits
 
 
-def _build_interakt_template_payload(
+def _build_whatsapp_template_payload(
     *,
     template_name: str,
     country_code: str,
     phone_number: str,
-    callback_data: str,
     body_values: list[str],
     invoice_pdf_url: str,
     invoice_pdf_file_name: str,
 ) -> dict:
     settings = get_settings()
+    recipient_digits = f"{''.join(ch for ch in country_code if ch.isdigit())}{phone_number}"
     return {
-        "countryCode": country_code,
-        "phoneNumber": phone_number,
-        "type": "Template",
-        "callbackData": callback_data,
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": recipient_digits,
+        "type": "template",
         "template": {
-            "name":
-            template_name,
-            "languageCode":
-            settings.interakt_template_language_code,
-            "headerValues": [
-                invoice_pdf_url,
+            "name": template_name,
+            "language": {
+                "code": settings.whatsapp_template_language_code,
+            },
+            "components": [
+                {
+                    "type": "header",
+                    "parameters": [
+                        {
+                            "type": "document",
+                            "document": {
+                                "link": invoice_pdf_url,
+                                "filename": invoice_pdf_file_name,
+                            },
+                        },
+                    ],
+                },
+                {
+                    "type": "body",
+                    "parameters": [
+                        {
+                            "type": "text",
+                            "text": value,
+                        }
+                        for value in body_values
+                    ],
+                },
             ],
-            "fileName":
-            invoice_pdf_file_name,
-            "bodyValues": body_values,
         },
     }
 
@@ -208,11 +226,10 @@ def _build_booking_invoice_proof_payload(
     invoice_pdf_file_name: str,
 ) -> dict:
     settings = get_settings()
-    return _build_interakt_template_payload(
-        template_name=settings.interakt_template_name,
+    return _build_whatsapp_template_payload(
+        template_name=settings.whatsapp_template_name,
         country_code=country_code,
         phone_number=phone_number,
-        callback_data=f"booking:{booking_id}|invoice:{invoice_number}|kind:proof",
         body_values=[
             customer_name,
             str(booking_id),
@@ -238,12 +255,14 @@ def _build_payment_reminder_payload(
     invoice_pdf_file_name: str,
 ) -> dict:
     settings = get_settings()
-    return _build_interakt_template_payload(
-        template_name=settings.interakt_payment_reminder_template_name,
+    template_name = (
+        settings.whatsapp_payment_reminder_template_name
+        or settings.whatsapp_template_name
+    )
+    return _build_whatsapp_template_payload(
+        template_name=template_name,
         country_code=country_code,
         phone_number=phone_number,
-        callback_data=
-        f"booking:{booking_id}|invoice:{invoice_number}|kind:payment_reminder",
         body_values=[
             customer_name,
             str(booking_id),
@@ -257,16 +276,34 @@ def _build_payment_reminder_payload(
     )
 
 
-def _send_interakt_payload(payload: dict) -> dict:
+def _whatsapp_meta_messages_url() -> str:
     settings = get_settings()
-    url = f"{settings.interakt_base_url.rstrip('/')}/v1/public/message/"
+    return (
+        f"{settings.whatsapp_meta_base_url.rstrip('/')}/"
+        f"{settings.whatsapp_meta_api_version}/"
+        f"{settings.whatsapp_meta_phone_number_id}/messages"
+    )
+
+
+def _raise_whatsapp_meta_provider_error(details: dict) -> None:
+    raise AppError(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        message="WhatsApp Meta API rejected the message request.",
+        error_code="WHATSAPP_META_PROVIDER_ERROR",
+        details=details,
+    )
+
+
+def _send_whatsapp_meta_payload(payload: dict) -> dict:
+    settings = get_settings()
+    url = _whatsapp_meta_messages_url()
     body = json.dumps(payload).encode("utf-8")
     req = request.Request(
         url,
         data=body,
         method="POST",
         headers={
-            "Authorization": f"Basic {settings.interakt_api_key}",
+            "Authorization": f"Bearer {settings.whatsapp_meta_access_token}",
             "Content-Type": "application/json",
         },
     )
@@ -279,29 +316,60 @@ def _send_interakt_payload(payload: dict) -> dict:
             details = json.loads(raw)
         except json.JSONDecodeError:
             details = {"raw_response": raw}
-        raise AppError(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            message="Interakt rejected the message request.",
-            error_code="INTERAKT_PROVIDER_ERROR",
-            details=details,
-        ) from exc
+        _raise_whatsapp_meta_provider_error(details)
     except error.URLError as exc:
         raise AppError(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            message="Failed to reach the Interakt provider.",
-            error_code="INTERAKT_PROVIDER_UNREACHABLE",
+            message="Failed to reach the WhatsApp Meta API provider.",
+            error_code="WHATSAPP_META_PROVIDER_UNREACHABLE",
             details={"reason": str(exc.reason)},
         ) from exc
 
     try:
-        return json.loads(raw)
+        response_payload = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise AppError(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            message="Interakt returned an invalid response.",
-            error_code="INTERAKT_PROVIDER_INVALID_RESPONSE",
+            message="WhatsApp Meta API returned an invalid response.",
+            error_code="WHATSAPP_META_PROVIDER_INVALID_RESPONSE",
             details={"raw_response": raw},
         ) from exc
+
+    if not isinstance(response_payload, dict):
+        raise AppError(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            message="WhatsApp Meta API returned an invalid response.",
+            error_code="WHATSAPP_META_PROVIDER_INVALID_RESPONSE",
+            details={"raw_response": response_payload},
+        )
+
+    if response_payload.get("success") is False:
+        _raise_whatsapp_meta_provider_error(response_payload)
+
+    return response_payload
+
+
+def _extract_whatsapp_provider_message_id(response_payload: dict) -> str | None:
+    if isinstance(response_payload.get("id"), str):
+        return response_payload["id"]
+
+    messages = response_payload.get("messages")
+    if isinstance(messages, list) and messages and isinstance(messages[0], dict):
+        message_id = messages[0].get("id")
+        if isinstance(message_id, str):
+            return message_id
+
+    data = response_payload.get("data")
+    if isinstance(data, dict):
+        if isinstance(data.get("id"), str):
+            return data["id"]
+        data_messages = data.get("messages")
+        if isinstance(data_messages, list) and data_messages and isinstance(data_messages[0], dict):
+            message_id = data_messages[0].get("id")
+            if isinstance(message_id, str):
+                return message_id
+
+    return None
 
 
 def _persist_notification(
@@ -315,7 +383,7 @@ def _persist_notification(
     text: str,
     response_payload: dict,
 ) -> OutboundNotification:
-    provider_message_id = response_payload.get("id")
+    provider_message_id = _extract_whatsapp_provider_message_id(response_payload)
 
     notification = OutboundNotification(
         franchise_id=franchise_id,
@@ -489,8 +557,8 @@ def send_booking_invoice_whatsapp_proof_for_actor(
         invoice_pdf_url=presigned_url,
         invoice_pdf_file_name=pdf_file_name,
     )
-    response_payload = _send_interakt_payload(payload)
-    text = (f"Interakt invoice send for customer {customer.full_name}, "
+    response_payload = _send_whatsapp_meta_payload(payload)
+    text = (f"WhatsApp Meta invoice send for customer {customer.full_name}, "
             f"booking {booking.id}, invoice {invoice.invoice_number}.")
     notification = _persist_notification(
         db,
@@ -504,7 +572,7 @@ def send_booking_invoice_whatsapp_proof_for_actor(
     )
     write_audit_log(
         db,
-        action="notification.interakt_proof_sent",
+        action="notification.whatsapp_meta_proof_sent",
         entity_name="outbound_notifications",
         entity_id=str(notification.id),
         actor_user_id=actor.id,
@@ -601,9 +669,9 @@ def send_payment_reminder_whatsapp_for_actor(
         invoice_pdf_url=presigned_url,
         invoice_pdf_file_name=pdf_file_name,
     )
-    response_payload = _send_interakt_payload(payload)
+    response_payload = _send_whatsapp_meta_payload(payload)
     text = (
-        f"Interakt payment reminder sent for customer {customer.full_name}, "
+        f"WhatsApp Meta payment reminder sent for customer {customer.full_name}, "
         f"booking {booking.id}, invoice {invoice.invoice_number}, pending {total_remaining_amount}."
     )
     notification = _persist_notification(
@@ -618,7 +686,7 @@ def send_payment_reminder_whatsapp_for_actor(
     )
     write_audit_log(
         db,
-        action="notification.interakt_payment_reminder_sent",
+        action="notification.whatsapp_meta_payment_reminder_sent",
         entity_name="outbound_notifications",
         entity_id=str(notification.id),
         actor_user_id=actor.id,
