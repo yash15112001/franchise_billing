@@ -305,7 +305,9 @@ def _send_whatsapp_meta_payload(payload: dict) -> dict:
         method="POST",
         headers={
             "Authorization": f"Bearer {settings.whatsapp_meta_access_token}",
+            "Accept": "application/json",
             "Content-Type": "application/json",
+            "User-Agent": "FranchiseBilling/1.0 (+https://crmapi.lifeweblink.com)",
         },
     )
     try:
